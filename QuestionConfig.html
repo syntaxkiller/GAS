@@ -492,11 +492,29 @@
                 </div>
                 <p class="text-xs text-secondary mb-2">Group questions by color to apply the same chart configuration to multiple questions at once.</p>
                 
+                <!-- Unassigned questions notice -->
+                <div x-show="unassignedQuestionsInModal.length > 0" class="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                  <div class="font-semibold text-yellow-800 mb-1">
+                    <span x-text="unassignedQuestionsInModal.length"></span> unassigned question(s)
+                  </div>
+                  <div class="text-yellow-700 mb-2">Select a color group for each question, or assign all at once:</div>
+                  <div class="flex flex-wrap gap-1">
+                    <template x-for="emoji in colorGroupEmojis.slice(0, 5)" :key="'quick-assign-' + emoji">
+                      <button class="btn btn-sm" 
+                              style="padding: 2px 8px; font-size: 14px;"
+                              @click="assignAllUnassignedToGroup(emoji)"
+                              :title="'Assign all unassigned to ' + emoji"
+                              x-text="emoji"></button>
+                    </template>
+                  </div>
+                </div>
+                
                 <div class="questions-list">
                   <template x-for="qId in currentLinkedQuestions" :key="qId">
                     <div class="question-chip">
                       <select class="group-selector" :value="tempColorGroupAssignments[qId] || ''" 
                               @change="assignQuestionToColorGroup(qId, $event.target.value)">
+                        <option value="">None</option>
                         <template x-for="emoji in colorGroupEmojis" :key="emoji">
                           <option :value="emoji" x-text="emoji"></option>
                         </template>
@@ -504,6 +522,9 @@
                       <div class="flex-1 min-w-0">
                         <div class="question-chip-id flex items-center gap-1">
                           <span x-text="qId"></span>
+                          <span x-show="currentConfig[qId]?.questionType" 
+                                class="text-xs bg-blue-100 text-blue-700 px-1 rounded"
+                                title="Has chart configuration">⚙️</span>
                           <span x-show="currentConfig[qId]?.colorGroup" 
                                 class="text-xs bg-green-100 text-green-700 px-1 rounded"
                                 title="Has saved color group">✓</span>
@@ -592,8 +613,24 @@
             
             <!-- Right Panel - Configuration columns -->
             <div class="right-panel">
+              <!-- Empty state when no groups assigned -->
+              <div x-show="!reconcileMode && activeColorGroupsInModal.length === 0" 
+                   class="flex items-center justify-center h-full">
+                <div class="text-center p-8">
+                  <div class="text-4xl mb-4">📋</div>
+                  <div class="text-lg font-semibold mb-2">No Color Groups Assigned</div>
+                  <div class="text-secondary text-sm mb-4">
+                    Assign questions to color groups using the dropdown menus on the left, 
+                    or use Reconcile Mode to configure each question individually.
+                  </div>
+                  <button class="btn btn-primary" @click="toggleReconcileMode()">
+                    🔍 Use Reconcile Mode
+                  </button>
+                </div>
+              </div>
+              
               <!-- Normal Mode: Color Group Columns -->
-              <div class="config-columns-container" x-show="!reconcileMode">
+              <div class="config-columns-container" x-show="!reconcileMode && activeColorGroupsInModal.length > 0">
                 <template x-for="emoji in activeColorGroupsInModal" :key="emoji">
                   <div class="config-column-item">
                     <div class="config-column-header">

@@ -222,6 +222,15 @@
         );
       },
       
+      /**
+       * Get list of questions that are not assigned to any color group
+       */
+      get unassignedQuestionsInModal() {
+        return this.currentLinkedQuestions.filter(qId => 
+          !this.tempColorGroupAssignments[qId]
+        );
+      },
+      
       get filteredFacetValues() {
         if (!this.facetSearchTerm) return this.facetValues;
         const term = this.facetSearchTerm.toLowerCase();
@@ -792,95 +801,33 @@
           };
         });
 
-        // Check if any questions have existing color groups saved in column K
-        const questionsWithColorGroups = this.currentLinkedQuestions.filter(qId => 
-          this.currentConfig[qId]?.colorGroup
-        );
+        // Load existing color group assignments from column K
+        // Only assign questions that actually have a colorGroup saved - leave others unassigned
+        const colorGroupConfigs = {};
         
-        if (questionsWithColorGroups.length > 0) {
-          // Use existing color groups from column K
-          const colorGroupConfigs = {};
+        this.currentLinkedQuestions.forEach(qId => {
+          const cfg = this.currentConfig[qId];
+          const existingColorGroup = cfg?.colorGroup;
           
-          this.currentLinkedQuestions.forEach(qId => {
-            const cfg = this.currentConfig[qId];
-            const existingColorGroup = cfg?.colorGroup;
+          if (existingColorGroup) {
+            // This question has a saved color group - assign it
+            this.tempColorGroupAssignments[qId] = existingColorGroup;
             
-            if (existingColorGroup) {
-              this.tempColorGroupAssignments[qId] = existingColorGroup;
-              
-              // Load config for this color group (use first question's config as template)
-              if (!colorGroupConfigs[existingColorGroup] && cfg.questionType) {
-                colorGroupConfigs[existingColorGroup] = { ...cfg };
-              }
+            // Load config for this color group (use first question's config as template)
+            if (!colorGroupConfigs[existingColorGroup] && cfg.questionType) {
+              colorGroupConfigs[existingColorGroup] = { ...cfg };
             }
-          });
-          
-          // Apply loaded configs to tempColorGroupConfigs
-          Object.keys(colorGroupConfigs).forEach(emoji => {
-            this.tempColorGroupConfigs[emoji] = colorGroupConfigs[emoji];
-          });
-          
-          // Assign questions without color groups to the first available emoji
-          const unassignedQuestions = this.currentLinkedQuestions.filter(qId => 
-            !this.tempColorGroupAssignments[qId]
-          );
-          
-          if (unassignedQuestions.length > 0) {
-            // Find the first unused emoji or use the first one
-            const usedEmojis = new Set(Object.values(this.tempColorGroupAssignments));
-            const availableEmoji = this.colorGroupEmojis.find(e => !usedEmojis.has(e)) || this.colorGroupEmojis[0];
-            unassignedQuestions.forEach(qId => {
-              this.tempColorGroupAssignments[qId] = availableEmoji;
-            });
           }
-          
-        } else {
-          // No existing color groups - auto-assign based on config signatures
-          const configGroups = {};
-          let unconfiguredQuestions = [];
-
-          this.currentLinkedQuestions.forEach(qId => {
-            const cfg = this.currentConfig[qId];
-            if (cfg && cfg.questionType) {
-              const sig = getBaseConfigSignature(cfg);
-              if (!configGroups[sig]) configGroups[sig] = [];
-              configGroups[sig].push(qId);
-            } else {
-              unconfiguredQuestions.push(qId);
-            }
-          });
-
-          // Assign configured groups to emojis
-          let emojiIndex = 0;
-          
-          Object.keys(configGroups).forEach(sig => {
-            if (emojiIndex < this.colorGroupEmojis.length) {
-              const emoji = this.colorGroupEmojis[emojiIndex];
-              const qIds = configGroups[sig];
-              
-              qIds.forEach(qId => this.tempColorGroupAssignments[qId] = emoji);
-
-              // Load config from first question in group
-              const firstConfig = this.currentConfig[qIds[0]];
-              if (firstConfig) {
-                this.tempColorGroupConfigs[emoji] = { ...firstConfig, colorGroup: emoji };
-              }
-              emojiIndex++;
-            } else {
-              // Overflow to last emoji
-              const emoji = this.colorGroupEmojis[this.colorGroupEmojis.length - 1];
-              configGroups[sig].forEach(qId => this.tempColorGroupAssignments[qId] = emoji);
-            }
-          });
-
-          // Assign unconfigured questions to next available emoji
-          if (unconfiguredQuestions.length > 0) {
-            const emoji = emojiIndex < this.colorGroupEmojis.length ? 
-                          this.colorGroupEmojis[emojiIndex] : 
-                          this.colorGroupEmojis[this.colorGroupEmojis.length - 1];
-            unconfiguredQuestions.forEach(qId => this.tempColorGroupAssignments[qId] = emoji);
-          }
-        }
+          // If no colorGroup, leave tempColorGroupAssignments[qId] as undefined (unassigned)
+        });
+        
+        // Apply loaded configs to tempColorGroupConfigs
+        Object.keys(colorGroupConfigs).forEach(emoji => {
+          this.tempColorGroupConfigs[emoji] = colorGroupConfigs[emoji];
+        });
+        
+        // Note: Questions without a colorGroup are intentionally left unassigned
+        // They will appear with "None" selected in the dropdown
         
         this.showLinkedQuestionsModal = true;
         this.loadingLinkedPreview = true;
@@ -962,8 +909,70 @@
         }
       },
       
+      /**
+       * Assign a question to a color group
+       * When assigning to a new group, transfer the question's existing config if the group is empty
+       * @param {string} questionId - The question ID to assign
+       * @param {string} emoji - The color group emoji, or empty string for "None"
+       */
       assignQuestionToColorGroup(questionId, emoji) {
+        if (!emoji) {
+          // Unassign from any group (set to "None")
+          delete this.tempColorGroupAssignments[questionId];
+          return;
+        }
+        
+        // Check if the target color group has an empty/unconfigured config
+        const targetConfig = this.tempColorGroupConfigs[emoji];
+        const isTargetEmpty = !targetConfig || !targetConfig.questionType;
+        
+        // Check if this question has an existing saved configuration
+        const questionConfig = this.currentConfig[questionId];
+        const hasExistingConfig = questionConfig && questionConfig.questionType;
+        
+        // If target group is empty and question has config, transfer the config
+        if (isTargetEmpty && hasExistingConfig) {
+          this.tempColorGroupConfigs[emoji] = { 
+            ...questionConfig, 
+            colorGroup: emoji 
+          };
+          console.log(`Transferred config from ${questionId} to color group ${emoji}:`, this.tempColorGroupConfigs[emoji]);
+        }
+        
+        // Assign the question to the group
         this.tempColorGroupAssignments[questionId] = emoji;
+      },
+      
+      /**
+       * Assign all unassigned questions to a specific color group
+       * Transfers config from first configured question if group is empty
+       */
+      assignAllUnassignedToGroup(emoji) {
+        const unassigned = this.unassignedQuestionsInModal;
+        if (unassigned.length === 0) return;
+        
+        // Check if the target group is empty
+        const targetConfig = this.tempColorGroupConfigs[emoji];
+        const isTargetEmpty = !targetConfig || !targetConfig.questionType;
+        
+        // If target is empty, try to transfer config from first configured unassigned question
+        if (isTargetEmpty) {
+          for (const qId of unassigned) {
+            const qConfig = this.currentConfig[qId];
+            if (qConfig && qConfig.questionType) {
+              this.tempColorGroupConfigs[emoji] = { ...qConfig, colorGroup: emoji };
+              console.log(`Transferred config from ${qId} to color group ${emoji}`);
+              break;
+            }
+          }
+        }
+        
+        // Assign all unassigned questions to this group
+        unassigned.forEach(qId => {
+          this.tempColorGroupAssignments[qId] = emoji;
+        });
+        
+        this.showMessage('success', `Assigned ${unassigned.length} questions to ${emoji}`);
       },
       
       getQuestionsForColorGroup(emoji) {
