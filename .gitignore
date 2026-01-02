@@ -1,0 +1,6 @@
+# Ignore Backups folder (anywhere in the repo)
+Backups/
+**/Backups/
+
+# Ignore zip files
+*.zip
