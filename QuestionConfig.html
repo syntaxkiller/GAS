@@ -524,9 +524,31 @@
                   </button>
                 </div>
                 <p class="text-xs text-warning mb-2">Compare configs across questions. Yellow = values differ. Click "Use" to apply a value to all questions.</p>
-                <div class="questions-list" style="max-height: 200px;">
+                
+                <!-- Field differences summary -->
+                <div class="mb-3">
+                  <div class="text-xs font-semibold mb-1">Field Status:</div>
+                  <template x-for="field in reconcileFields" :key="'field-status-' + field.key">
+                    <div class="flex justify-between items-center text-xs py-1 border-b" 
+                         :class="{ 'text-warning': fieldHasDifference(field.key) }">
+                      <span x-text="field.label"></span>
+                      <div class="flex items-center gap-1">
+                        <span x-show="fieldHasDifference(field.key)" class="text-warning">⚠️ Differs</span>
+                        <span x-show="!fieldHasDifference(field.key)" class="text-success">✓</span>
+                        <button x-show="fieldHasDifference(field.key)" 
+                                class="btn-merge"
+                                @click="syncFieldToConsensus(field.key)"
+                                title="Sync all to most common value">Sync</button>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+                
+                <!-- Question list -->
+                <div class="text-xs font-semibold mb-1">Questions (<span x-text="currentLinkedQuestions.length"></span>):</div>
+                <div class="questions-list" style="max-height: 150px;">
                   <template x-for="qId in currentLinkedQuestions" :key="'reconcile-list-' + qId">
-                    <div class="text-xs p-2 border-b" x-text="qId"></div>
+                    <div class="text-xs p-2 border-b truncate" :title="qId" x-text="qId"></div>
                   </template>
                 </div>
               </div>
@@ -899,6 +921,25 @@
                                :class="{ 'field-differs': questionFieldDiffers(qId, 'customOrderMobile') }"
                                :title="reconcileConfigs[qId].customOrderMobile || '(none)'"
                                x-text="getReconcileFieldDisplay(qId, 'customOrderMobile')"></div>
+                        </div>
+                        
+                        <!-- Color Group -->
+                        <div class="form-group" style="margin-bottom: 8px;">
+                          <div class="flex justify-between items-center mb-1">
+                            <label class="form-label text-xs" style="margin: 0;">Color Group</label>
+                            <button class="btn-merge" 
+                                    x-show="fieldHasDifference('colorGroup')"
+                                    @click="mergeFieldToAll(qId, 'colorGroup')"
+                                    title="Apply this color group to all questions">Use</button>
+                          </div>
+                          <select class="form-select text-xs"
+                                  :class="{ 'field-differs': questionFieldDiffers(qId, 'colorGroup') }"
+                                  x-model="reconcileConfigs[qId].colorGroup">
+                            <option value="">No group</option>
+                            <template x-for="emoji in colorGroupEmojis" :key="emoji">
+                              <option :value="emoji" x-text="emoji"></option>
+                            </template>
+                          </select>
                         </div>
                       </div>
                     </template>

@@ -1419,21 +1419,34 @@
         
         if (this.reconcileMode) {
           // Initialize reconcileConfigs with each question's current saved config
-          this.reconcileConfigs = {};
+          // Using a fresh object for Alpine reactivity
+          const newConfigs = {};
+          
           this.currentLinkedQuestions.forEach(qId => {
-            const cfg = this.currentConfig[qId] || {};
-            this.reconcileConfigs[qId] = {
-              questionType: cfg.questionType || '',
-              chartType: cfg.chartType || '',
-              mobileChartType: cfg.mobileChartType || '',
-              hasOther: cfg.hasOther || false,
-              sortType: cfg.sortType || 'none',
-              sortTypeMobile: cfg.sortTypeMobile || '',
-              customOrder: cfg.customOrder || '',
-              customOrderMobile: cfg.customOrderMobile || '',
-              colorGroup: cfg.colorGroup || ''
+            // Look up the saved config from currentConfig (loaded from Question Configuration sheet)
+            const savedConfig = this.currentConfig[qId];
+            
+            // Debug: Log what we found
+            console.log(`Reconcile: Loading config for ${qId}:`, savedConfig);
+            
+            // Deep copy the config or create default values
+            newConfigs[qId] = {
+              questionType: savedConfig?.questionType || '',
+              chartType: savedConfig?.chartType || '',
+              mobileChartType: savedConfig?.mobileChartType || '',
+              hasOther: savedConfig?.hasOther === true,
+              sortType: savedConfig?.sortType || 'none',
+              sortTypeMobile: savedConfig?.sortTypeMobile || '',
+              customOrder: savedConfig?.customOrder || '',
+              customOrderMobile: savedConfig?.customOrderMobile || '',
+              colorGroup: savedConfig?.colorGroup || ''
             };
           });
+          
+          // Assign to trigger Alpine reactivity
+          this.reconcileConfigs = newConfigs;
+          
+          console.log('Reconcile configs initialized:', this.reconcileConfigs);
         }
       },
       
@@ -1449,7 +1462,8 @@
           { key: 'sortType', label: 'Sort Type (Desktop)' },
           { key: 'sortTypeMobile', label: 'Sort Type (Mobile)' },
           { key: 'customOrder', label: 'Custom Order (Desktop)' },
-          { key: 'customOrderMobile', label: 'Custom Order (Mobile)' }
+          { key: 'customOrderMobile', label: 'Custom Order (Mobile)' },
+          { key: 'colorGroup', label: 'Color Group' }
         ];
       },
       
@@ -1552,6 +1566,50 @@
       },
       
       /**
+       * Sync all questions to the most common (consensus) value for a field
+       */
+      syncFieldToConsensus(fieldKey) {
+        if (!this.reconcileConfigs) return;
+        
+        // Count values
+        const valueCounts = {};
+        this.currentLinkedQuestions.forEach(qId => {
+          const cfg = this.reconcileConfigs[qId];
+          if (cfg) {
+            let val = cfg[fieldKey];
+            if (typeof val === 'boolean') val = val.toString();
+            if (val === null || val === undefined) val = '';
+            valueCounts[val] = (valueCounts[val] || 0) + 1;
+          }
+        });
+        
+        // Find most common
+        let mostCommonValue = '';
+        let maxCount = 0;
+        Object.entries(valueCounts).forEach(([val, count]) => {
+          if (count > maxCount) {
+            maxCount = count;
+            mostCommonValue = val;
+          }
+        });
+        
+        // Convert back to correct type for boolean fields
+        let valueToApply = mostCommonValue;
+        if (fieldKey === 'hasOther') {
+          valueToApply = mostCommonValue === 'true';
+        }
+        
+        // Apply to all
+        this.currentLinkedQuestions.forEach(qId => {
+          if (this.reconcileConfigs[qId]) {
+            this.reconcileConfigs[qId][fieldKey] = valueToApply;
+          }
+        });
+        
+        this.showMessage('success', `Synced all questions to consensus value for "${fieldKey}"`);
+      },
+      
+      /**
        * Merge custom order values from all questions into a combined list
        * Preserves unique values and sorts by total frequency
        */
@@ -1610,22 +1668,13 @@
         
         const configsToSave = [];
         
-        // Determine color group - use the first non-empty one or assign new one
-        let colorGroup = '';
-        for (const qId of this.currentLinkedQuestions) {
-          if (this.reconcileConfigs[qId]?.colorGroup) {
-            colorGroup = this.reconcileConfigs[qId].colorGroup;
-            break;
-          }
-        }
-        if (!colorGroup) {
-          colorGroup = this.colorGroupEmojis[0]; // Default to first emoji
-        }
-        
         this.currentLinkedQuestions.forEach(qId => {
           const cfg = this.reconcileConfigs[qId];
           if (cfg) {
-            cfg.colorGroup = colorGroup;
+            // Preserve individual colorGroup - if empty, assign default
+            if (!cfg.colorGroup) {
+              cfg.colorGroup = this.colorGroupEmojis[0]; // Default to first emoji
+            }
             configsToSave.push({
               questionId: qId,
               config: { ...cfg }
