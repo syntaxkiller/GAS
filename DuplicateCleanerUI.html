@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body { background-color: #f3f4f6; font-family: sans-serif; padding: 1rem; }
+      .diff-highlight { background-color: #fee2e2; } /* Light red for differences */
+      .card { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem; overflow: hidden; }
+      .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #3b82f6; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+      @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+      
+      /* Custom Scrollbar for horizontal tables */
+      .overflow-x-auto::-webkit-scrollbar { height: 8px; }
+      .overflow-x-auto::-webkit-scrollbar-track { background: #f1f1f1; }
+      .overflow-x-auto::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+      .overflow-x-auto::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+    </style>
+  </head>
+  <body>
+
+    <div class="flex justify-between items-center mb-4 sticky top-0 bg-[#f3f4f6] z-10 py-2">
+      <div>
+        <h2 class="text-xl font-bold text-gray-800">Duplicate Manager</h2>
+        <p class="text-sm text-gray-500">Compare and remove duplicate configuration rows.</p>
+      </div>
+      <button onclick="loadDuplicates()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-medium shadow-sm transition-colors">
+        Refresh List
+      </button>
+    </div>
+
+    <div id="loading" class="flex items-center justify-center py-10">
+      <div class="spinner mr-3"></div>
+      <span class="text-gray-500">Scanning for duplicates...</span>
+    </div>
+
+    <div id="content"></div>
+
+    <script>
+      // On load, fetch data
+      window.onload = loadDuplicates;
+
+      function loadDuplicates() {
+        document.getElementById('loading').style.display = 'flex';
+        document.getElementById('content').innerHTML = '';
+        
+        google.script.run
+          .withSuccessHandler(renderDuplicates)
+          .withFailureHandler(showError)
+          .getConfigDuplicates();
+      }
+
+      function renderDuplicates(data) {
+        document.getElementById('loading').style.display = 'none';
+        const container = document.getElementById('content');
+        const { headers, duplicates } = data;
+        const duplicateIds = Object.keys(duplicates);
+
+        if (duplicateIds.length === 0) {
+          container.innerHTML = `
+            <div class="bg-green-50 border border-green-200 text-green-700 px-6 py-8 rounded-lg text-center shadow-sm" role="alert">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto mb-3 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <strong class="font-bold text-lg">All Clean!</strong>
+              <p class="mt-2 text-green-600">No duplicate IDs found in the configuration sheet.</p>
+            </div>
+          `;
+          return;
+        }
+
+        duplicateIds.forEach(id => {
+          const occurrences = duplicates[id];
+          const card = createComparisonCard(id, headers, occurrences);
+          container.appendChild(card);
+        });
+      }
+
+      function createComparisonCard(id, headers, occurrences) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.dataset.cardId = id;
+
+        // 1. Analyze Columns for Identity
+        // We create a "signature" string for each column (excluding the ID which is index 0, and rowNumber)
+        const signatures = occurrences.map(occ => 
+            JSON.stringify(occ.values.slice(1).map(v => String(v).trim()))
+        );
+        
+        // Check if signature matches any OTHER column's signature
+        const matchStatus = signatures.map((sig, i) => {
+            return signatures.some((otherSig, otherIdx) => i !== otherIdx && otherSig === sig);
+        });
+
+        let html = `
+          <div class="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+            <div class="flex items-center gap-2">
+              <h3 class="font-bold text-lg text-gray-700 font-mono">ID: ${id}</h3>
+            </div>
+            <span class="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full border border-yellow-200 font-medium copy-count">
+              ${occurrences.length} Copies Found
+            </span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left border-collapse min-w-[600px]">
+              <thead>
+                <tr class="bg-white border-b border-gray-200">
+                  <th class="px-4 py-3 font-medium text-gray-500 w-48 bg-gray-50/50 sticky left-0 border-r border-gray-100 z-10">Field Name</th>
+        `;
+
+        // Create Table Headers (Row Identifiers)
+        occurrences.forEach((occ, index) => {
+            const isIdentical = matchStatus[index];
+            
+            // Green style for identical columns, gray for unique
+            const bgClass = isIdentical ? 'bg-green-50/80 border-green-100' : 'bg-gray-50/30 border-gray-100';
+            const badge = isIdentical 
+                ? `<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-800 mt-1 uppercase tracking-wide border border-green-200">
+                     <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                     Identical
+                   </span>` 
+                : '';
+
+            html += `<th class="px-4 py-3 font-bold text-gray-800 border-l ${bgClass} text-center min-w-[200px] column-header align-top">
+                        <div class="mb-1">Option ${index + 1}</div>
+                        <span class="block font-normal text-gray-400 text-[10px] uppercase tracking-wide row-label" data-row="${occ.rowNumber}">Row ${occ.rowNumber}</span>
+                        ${badge}
+                     </th>`;
+        });
+
+        html += `</tr></thead><tbody>`;
+
+        // Create Table Rows (Transposed Data)
+        for (let i = 1; i < headers.length; i++) {
+            const values = occurrences.map(occ => String(occ.values[i]).trim());
+            const isDiff = !values.every(v => v === values[0]);
+            
+            // Row highlight takes precedence for diffs (Red)
+            // If row is not diff, we don't highlight column body to keep it clean, 
+            // relying on Header/Footer for Identity cues.
+            const rowClass = isDiff ? 'bg-red-50/60' : 'hover:bg-gray-50/50'; 
+            const textClass = isDiff ? 'text-gray-900 font-medium' : 'text-gray-600';
+
+            html += `<tr class="border-b border-gray-100 ${rowClass} transition-colors">
+                      <td class="px-4 py-2 font-medium text-gray-500 text-xs uppercase tracking-wider bg-gray-50/30 sticky left-0 border-r border-gray-100 z-10">${headers[i]}</td>`;
+            
+            occurrences.forEach((occ, index) => {
+                let displayVal = occ.values[i];
+                if(displayVal === true) displayVal = "<span class='text-green-600 font-bold'>☑ Yes</span>";
+                if(displayVal === false) displayVal = "<span class='text-gray-400'>☐ No</span>";
+                if(displayVal === "") displayVal = "<span class='text-gray-300 italic text-xs'>Empty</span>";
+
+                // If it's an identical column, maybe add a very subtle hint, 
+                // but ensure we don't override the Red Diff background
+                const isIdentical = matchStatus[index];
+                const cellBg = (!isDiff && isIdentical) ? 'bg-green-50/10' : '';
+
+                html += `<td class="px-4 py-2 border-l border-gray-100 ${textClass} ${cellBg} text-center">${displayVal}</td>`;
+            });
+            html += `</tr>`;
+        }
+
+        // Action Footer
+        html += `
+              <tr class="bg-gray-100 border-t-2 border-gray-200">
+                <td class="px-4 py-4 align-top sticky left-0 bg-gray-100 border-r border-gray-200 z-10">
+                    <div class="font-bold text-gray-800 mb-1">Resolution Actions</div>
+                    <p class="text-xs text-gray-500 leading-relaxed">
+                        "Identical" columns are safe to delete if you keep one copy.
+                    </p>
+                </td>
+        `;
+
+        occurrences.forEach((occ, index) => {
+            const isIdentical = matchStatus[index];
+            const footerBg = isIdentical ? 'bg-green-50/30' : '';
+            
+            html += `
+                <td class="px-4 py-4 border-l border-gray-200 align-top text-center ${footerBg}">
+                  <div class="flex flex-col gap-2 items-center">
+                    <p class="text-xs text-gray-600">
+                      Delete data in <strong class="row-label" data-row="${occ.rowNumber}">Row ${occ.rowNumber}</strong>?
+                    </p>
+                    <button 
+                      onclick="deleteRow(this)" 
+                      data-row="${occ.rowNumber}"
+                      class="group w-full max-w-[140px] bg-white border border-red-300 hover:bg-red-500 hover:border-red-500 text-red-600 hover:text-white py-2 px-3 rounded text-xs font-semibold transition-all duration-200 ease-in-out flex items-center justify-center gap-2 shadow-sm">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Delete Entry
+                    </button>
+                  </div>
+                </td>
+            `;
+        });
+
+        html += `</tr></tbody></table></div>`;
+        card.innerHTML = html;
+        return card;
+      }
+
+      function deleteRow(btn) {
+        const rowNumber = parseInt(btn.dataset.row);
+
+        // Show deleting state
+        const originalHTML = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `
+          <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>`;
+        btn.classList.add('opacity-75', 'cursor-not-allowed');
+
+        google.script.run
+          .withSuccessHandler(() => {
+             handleDeleteSuccess(btn, rowNumber);
+          })
+          .withFailureHandler((err) => {
+             alert("Error: " + err.message);
+             btn.innerHTML = originalHTML;
+             btn.disabled = false;
+             btn.classList.remove('opacity-75', 'cursor-not-allowed');
+          })
+          .deleteConfigRow(rowNumber);
+      }
+
+      function handleDeleteSuccess(btn, deletedRowNumber) {
+        const cell = btn.closest('td');
+        const row = cell.parentElement;
+        const cellIndex = Array.from(row.children).indexOf(cell);
+        const card = btn.closest('.card');
+        const table = card.querySelector('table');
+
+        // Remove column
+        const headerRow = table.querySelector('thead tr');
+        if (headerRow.children[cellIndex]) headerRow.children[cellIndex].remove();
+
+        const bodyRows = table.querySelectorAll('tbody tr');
+        bodyRows.forEach(tr => {
+          if (tr.children[cellIndex]) tr.children[cellIndex].remove();
+        });
+
+        // Check remaining
+        const remainingCols = headerRow.children.length;
+        if (remainingCols <= 2) {
+            card.classList.add('opacity-50');
+            setTimeout(() => card.remove(), 300);
+        } else {
+            // Update count
+            const badge = card.querySelector('.copy-count');
+            if (badge) badge.innerText = `${remainingCols - 1} Copies Found`;
+            
+            // Update Option headers
+            const headers = table.querySelectorAll('.column-header');
+            headers.forEach((th, idx) => {
+                const div = th.querySelector('div');
+                if(div) div.textContent = `Option ${idx + 1}`;
+            });
+        }
+
+        // Update Row numbers globally
+        const allRowElements = document.querySelectorAll('[data-row]');
+        allRowElements.forEach(el => {
+            const currentRow = parseInt(el.dataset.row);
+            if (currentRow > deletedRowNumber) {
+                const newRow = currentRow - 1;
+                el.dataset.row = newRow;
+                if (el.classList.contains('row-label')) {
+                   if (el.tagName === 'STRONG') {
+                       el.innerText = `Row ${newRow}`;
+                   } else {
+                       el.innerText = `Row ${newRow}`;
+                   }
+                }
+            }
+        });
+      }
+
+      function showError(err) {
+        document.getElementById('content').insertAdjacentHTML('afterbegin', `
+          <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-4 rounded-lg relative flex items-center gap-3 mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+                <strong class="font-bold block">Something went wrong</strong>
+                <span class="block text-sm">${err.message}</span>
+            </div>
+          </div>
+        `);
+      }
+    </script>
+  </body>
+</html>
