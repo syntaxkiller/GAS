@@ -3,1719 +3,380 @@
 <head>
   <base target="_top">
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- 
-    ADD ALPINE.JS: This is the lightweight library that will manage our entire UI.
-    It replaces all the custom render, state, and handler JS files.
-  -->
-  <script src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <script src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js" defer></script>
+  
+  <!-- Include shared styles -->
+  <?!= HtmlService.createHtmlOutputFromFile('SharedStyles').getContent(); ?>
+  
   <style>
-    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #334155; }
-    .label { font-weight: 600; color: #475569; margin-bottom: 4px; font-size: 0.875rem; }
-    .input { width: 100%; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; transition: border-color 0.2s; background-color: white; }
-    .input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4); }
-    .btn { padding: 8px 16px; border-radius: 6px; font-weight: 600; text-align: center; color: white; cursor: pointer; transition: background-color 0.2s; border: none; }
-    .btn-sm { padding: 4px 8px; font-size: 0.75rem; line-height: 1rem; } /* Smaller button */
-    .btn-primary { background-color: #3b82f6; } .btn-primary:hover { background-color: #2563eb; }
-    .btn-secondary { background-color: #64748b; } .btn-secondary:hover { background-color: #475569; }
-    .btn-danger { background-color: #ef4444; } .btn-danger:hover { background-color: #dc2626; }
-    .btn:disabled { background-color: #94a3b8; cursor: not-allowed; }
-    #loader, #toast { z-index: 50; }
+    /* Sidebar-specific styles */
     .h-linking-view { height: calc(100vh - 150px); }
-
-    /* Drag-and-drop styles */
-    .facet-item.is-dragging { opacity: 0.4; border-style: dashed; background-color: #e0f2fe; }
-    .facet-item.drag-over-target { outline: 2px solid #2563eb; outline-offset: 2px; background-color: #dbeafe; }
     
-    /* Hide templates managed by Alpine */
-    [x-cloak] { display: none !important; }
-
+    /* Facet drag-and-drop */
+    .facet-item.is-dragging { opacity: 0.4; border-style: dashed; background-color: #e0f2fe; }
+    .facet-item.drag-over-target { outline: 2px solid var(--primary); outline-offset: 2px; background-color: var(--primary-light); }
+    
     /* Preview styles */
     .preview-container { overflow-x: auto; white-space: nowrap; }
     .preview-year { display: inline-block; vertical-align: top; width: 150px; margin-right: 1rem; padding: 0.5rem; background-color: #e2e8f0; border-radius: 4px; }
     .preview-answer { display: block; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
   </style>
-
-  <!-- 
-    ====================================================================
-    MAIN SCRIPT: Moved to <head> to ensure app() is defined
-    before Alpine (deferred) tries to execute it.
-    ====================================================================
-  -->
-  <script>
-    /**
-     * This Proxy is a helper to "promisify" google.script.run.
-     * It lets us use "await server.functionName(...)" instead of
-     * the .withSuccessHandler() and .withFailureHandler() callbacks.
-     */
-    const server = new Proxy({}, {
-      get(target, prop) {
-        // Return a function that, when called, returns a Promise
-        return (...args) => {
-          return new Promise((resolve, reject) => {
-            google.script.run
-              .withSuccessHandler(resolve)
-              .withFailureHandler(reject)
-              [prop](...args); // Call the original server function
-          });
-        }
-      }
-    });
-
-    // --- UTILITIES ---
-    // These are the same helpers from your JS_State.html file.
-    
-    function escapeHtml(str) {
-      if (typeof str !== 'string') return '';
-      return str.replace(/[&<>"']/g, function(m) {
-        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
-      });
-    }
-
-    function toSentenceCase(str) {
-      if (!str) return '';
-      return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
-    }
-
-    function toCapitalCase(str) {
-      if (!str) return '';
-      return str.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-    }
-
-    /**
-     * This is the main Alpine.js component.
-     * It returns an object containing all our state and methods.
-     */
-    function app() {
-      return {
-        // --- STATE ---
-        // All the properties from your 'state' object
-        sheetsData: {},
-        linkedQuestions: {},
-        allQuestions: [],
-        hiddenQuestionIds: new Set(),
-        archivedQuestionIds: new Set(),
-        currentView: 'list',
-        sourceQuestion: null,
-        searchTerm: '',
-        facetListSearchTerm: '',
-        manageSearchTerm: '',
-        currentGroupName: '', // For the linking view group label
-        pendingSelections: new Set(),
-        combineData: {
-          sheetName: '',
-          headers: [],
-          preselectedHeaders: null,
-          idsToArchive: [],
-          otherColumnOptions: [], // New: for the dropdown
-          headersToDisplay: [], // New: for the list
-        },
-        facetData: {
-          groupName: null,
-          questionId: null,
-          values: [],
-          pendingEdits: {},
-          filterTerm: '',
-          splitByComma: false,
-          sortBy: 'alphabetical',
-          previousView: 'list',
-          isLoadingValues: false,
-          countsLoaded: false,
-          title: '',
-          previousViewLabel: 'Tools',
-          specificYear: null, // NEW: Track if editing a specific year only
-        },
-        previewData: {}, // NEW: To store preview data { itemKey: { year: [ans1, ans2, ans3], ... } }
-        expandedPreviews: new Set(), // NEW: Set of item keys (groupName or questionId) that are expanded
-        loadingPreviews: new Set(), // NEW: Tracks loading state per item
-        
-        // UI State
-        isLoading: true,
-        loaderMessage: 'Initializing...',
-        toast: {
-          show: false,
-          message: '',
-          type: 'success'
-        },
-        draggedFacetItem: null, // For drag-and-drop
-
-        // --- COMPUTED PROPERTIES (Getters) ---
-        // These are dynamic values based on state, replacing old filter logic
-        
-        /**
-         * Generates the de-duplicated list for the "Link Questions" view.
-         */
-        get linkableItems() {
-          const processedIds = new Set(Object.values(this.linkedQuestions).flat());
-          const displayItems = [];
-          
-          for (const groupName in this.linkedQuestions) {
-            const groupIds = this.linkedQuestions[groupName];
-            if (!groupIds || groupIds.length === 0) continue;
-            const rep = this.allQuestions.find(q => q && q.id && groupIds.includes(q.id) && !this.hiddenQuestionIds.has(q.id) && !this.archivedQuestionIds.has(q.id));
-            if (rep) {
-              displayItems.push({ type: 'group', key: groupName, groupName: groupName, representativeQuestion: rep, questionCount: groupIds.length });
-            }
-          }
-
-          this.allQuestions.forEach(q => {
-            if (q && q.id && !processedIds.has(q.id) && !this.hiddenQuestionIds.has(q.id) && !this.archivedQuestionIds.has(q.id)) {
-              displayItems.push({ type: 'single', key: q.id, groupName: null, representativeQuestion: q, questionCount: 1 });
-            }
-          });
-          
-          const sorted = displayItems.sort((a, b) => (a.groupName || a.representativeQuestion.question).localeCompare(b.groupName || b.representativeQuestion.question));
-          
-          if (!this.searchTerm) return sorted;
-          const term = this.searchTerm.toLowerCase();
-          return sorted.filter(item => 
-            (item.groupName && item.groupName.toLowerCase().includes(term)) ||
-            (item.representativeQuestion.question.toLowerCase().includes(term))
-          );
-        },
-
-        /**
-         * Generates the de-duplicated list for the "Facet Questions" view.
-         */
-        get facetableItems() {
-          const processedIds = new Set(Object.values(this.linkedQuestions).flat());
-          const displayItems = [];
-          
-          for (const groupName in this.linkedQuestions) {
-            const groupIds = this.linkedQuestions[groupName];
-            if (!groupIds || groupIds.length === 0) continue;
-            // Find representative, allowing hidden ones for this view
-            const rep = this.allQuestions.find(q => q && q.id && groupIds.includes(q.id) && !this.archivedQuestionIds.has(q.id));
-            if (rep) {
-              displayItems.push({ type: 'group', key: groupName, groupName: groupName, representativeQuestion: rep, questionCount: groupIds.length });
-            }
-          }
-
-          this.allQuestions.forEach(q => {
-            // Allow hidden questions in this view
-            if (q && q.id && !processedIds.has(q.id) && !this.archivedQuestionIds.has(q.id)) {
-              displayItems.push({ type: 'single', key: q.id, groupName: null, representativeQuestion: q, questionCount: 1 });
-            }
-          });
-          
-          const sorted = displayItems.sort((a, b) => (a.groupName || a.representativeQuestion.question).localeCompare(b.groupName || b.representativeQuestion.question));
-          
-          if (!this.facetListSearchTerm) return sorted;
-          const term = this.facetListSearchTerm.toLowerCase();
-          return sorted.filter(item => 
-            (item.groupName && item.groupName.toLowerCase().includes(term)) ||
-            (item.representativeQuestion.question.toLowerCase().includes(term))
-          );
-        },
-        
-        /**
-         * Generates the filtered list for the "Manage Groups" view.
-         */
-        get filteredManageGroups() {
-          const term = this.manageSearchTerm.toLowerCase();
-          return Object.keys(this.linkedQuestions)
-            .filter(g => g.toLowerCase().includes(term))
-            .sort();
-        },
-        
-        /**
-         * Gets all questions currently marked as hidden.
-         */
-        get hiddenQuestions() {
-          return this.allQuestions
-            .filter(q => this.hiddenQuestionIds.has(q.id))
-            .sort((a,b) => a.question.localeCompare(b.question));
-        },
-        
-        /**
-         * Gets all questions currently marked as archived.
-         */
-        get archivedQuestions() {
-          return this.allQuestions
-            .filter(q => this.archivedQuestionIds.has(q.id))
-            .sort((a,b) => a.question.localeCompare(b.question));
-        },
-        
-        /**
-         * Gets selected questions grouped by sheet for the linking panel.
-         */
-        get pendingSelectionsInSheets() {
-            const selectedBySheet = {};
-            this.pendingSelections.forEach(id => {
-                const question = this.allQuestions.find(q => q.id === id);
-                if (question) {
-                    if (!selectedBySheet[question.sheet]) selectedBySheet[question.sheet] = [];
-                    selectedBySheet[question.sheet].push(question);
-                }
-            });
-            return Object.entries(selectedBySheet)
-              .sort((a,b) => a[0].localeCompare(b[0]))
-              .map(([name, questions]) => ({ name, questions }));
-        },
-        
-        /**
-         * Gets the filtered list of facet values.
-         */
-        get filteredFacetValues() {
-          const sorted = [...this.facetData.values].sort((a, b) => {
-            if (this.facetData.sortBy === 'count' && this.facetData.countsLoaded) {
-              return (b.count || 0) - (a.count || 0);
-            }
-            // ====================================================================
-            // MODIFICATION: Sort alphabetically based on ORIGINAL text (a.text, b.text)
-            // This prevents the list from jumping during edits.
-            // ====================================================================
-            return a.text.localeCompare(b.text, undefined, { numeric: true });
-          });
-          
-          if (!this.facetData.filterTerm) return sorted;
-          const term = this.facetData.filterTerm.toLowerCase();
-          // Filter based on the DISPLAYED text (which might include pending edits)
-          return sorted.filter(v => {
-            const displayText = this.facetData.pendingEdits.hasOwnProperty(v.text) ? this.facetData.pendingEdits[v.text] : v.text;
-            return displayText.toLowerCase().includes(term);
-          });
-        },
-        
-        // --- METHODS ---
-        // All the functions from JS_App.html and JS_Handlers.html
-        
-        /**
-         * Kicks off the application.
-         */
-        async initialize() {
-          this.isLoading = true;
-          try {
-            this.loaderMessage = "Step 1/2: Verifying question IDs...";
-            await server.ensureQuestionIdsExist();
-            
-            this.loaderMessage = "Step 2/2: Loading data...";
-            const [sheets, links, hidden, archived] = await server.getSidebarInitialData();
-            
-            this.sheetsData = sheets;
-            this.linkedQuestions = JSON.parse(links);
-            this.hiddenQuestionIds = new Set(JSON.parse(hidden || '[]'));
-            this.archivedQuestionIds = new Set(JSON.parse(archived || '[]'));
-            this.allQuestions = Object.values(sheets).flat();
-            
-            this.currentView = 'list'; // Reset to main view
-          } catch (e) {
-            this.handleError(e);
-          } finally {
-            this.isLoading = false;
-          }
-        },
-
-        // --- UTILITY METHODS ---
-        
-        findGroupForQuestion(questionId) {
-          return Object.keys(this.linkedQuestions).find(group => this.linkedQuestions[group].includes(questionId));
-        },
-        
-        getRelatedQuestionIds(sourceQuestionId) {
-            const sourceQuestion = this.allQuestions.find(q => q.id === sourceQuestionId);
-            if (!sourceQuestion) return [sourceQuestionId];
-            const sourceSheet = sourceQuestion.sheet;
-            const baseText = sourceQuestion.question.split('[')[0].trim();
-            return this.allQuestions
-                .filter(q => q.sheet === sourceSheet && q.question.split('[')[0].trim() === baseText)
-                .map(q => q.id);
-        },
-
-        showLoader(isLoading, message = '') {
-          this.isLoading = isLoading;
-          this.loaderMessage = message;
-        },
-
-        handleError(error) {
-          console.error(error);
-          this.showLoader(false);
-          // NEW: Clear preview loading state on error too
-          this.loadingPreviews.clear(); // NEW: Clear all preview loaders on a major error
-          this.showToast(`Error: ${error.message}`, 'error');
-        },
-
-        showToast(message, type = 'success') {
-          this.toast.message = message;
-          this.toast.type = type;
-          this.toast.show = true;
-          setTimeout(() => this.toast.show = false, 3000);
-        },
-        
-        // Returns questions for the linking view, filtered by search and visibility
-        filterQuestionsForLinking(sheetName) {
-            return (this.sheetsData[sheetName] || [])
-              .filter(q => 
-                !this.hiddenQuestionIds.has(q.id) && 
-                !this.archivedQuestionIds.has(q.id) &&
-                q.question.toLowerCase().includes(this.searchTerm.toLowerCase())
-              );
-        },
-        
-        // --- HANDLER METHODS ---
-        
-        async handleUnlinkAll(e) {
-            const btn = e.target;
-            if (btn.textContent.includes('Confirm')) {
-                this.linkedQuestions = {}; 
-                this.showLoader(true, 'Unlinking all groups...');
-                try {
-                  await server.saveLinks(JSON.stringify(this.linkedQuestions));
-                  this.showToast('All groups have been unlinked.');
-                  this.manageSearchTerm = '';
-                } catch(e) { this.handleError(e); }
-                finally { this.showLoader(false); }
-            } else {
-                const originalText = btn.textContent;
-                btn.textContent = 'Confirm Unlink All?';
-                btn.classList.add('bg-red-900');
-                setTimeout(() => { if (btn) { btn.textContent = originalText; btn.classList.remove('bg-red-900'); } }, 3000);
-            }
-        },
-
-        async handleMassUnlink(e) {
-          const btn = e.target;
-          const selectedGroups = Array.from(document.querySelectorAll('.unlink-checkbox:checked')).map(cb => cb.dataset.group);
-          if (selectedGroups.length === 0) return this.showToast('Please select at least one group to unlink.', 'error');
-
-          if (btn.textContent.includes('Confirm')) {
-              selectedGroups.forEach(groupName => { delete this.linkedQuestions[groupName]; });
-              this.showLoader(true, 'Unlinking selected groups...');
-              try {
-                await server.saveLinks(JSON.stringify(this.linkedQuestions));
-                this.showToast('Groups unlinked successfully!');
-                this.manageSearchTerm = '';
-                document.querySelectorAll('.unlink-checkbox:checked').forEach(cb => cb.checked = false);
-              } catch(e) { this.handleError(e); }
-              finally { this.showLoader(false); }
-          } else {
-              const originalText = btn.textContent;
-              btn.textContent = `Confirm Unlink (${selectedGroups.length})?`;
-              btn.classList.add('bg-red-700');
-              setTimeout(() => { if (btn) { btn.textContent = originalText; btn.classList.remove('bg-red-700'); } }, 3000);
-          }
-        },
-
-        async handleForceResync() {
-            const allKnownIds = new Set(this.allQuestions.map(q => q.id));
-            const originalLinks = JSON.parse(JSON.stringify(this.linkedQuestions));
-            const cleanedLinks = {};
-            const seenIds = new Set();
-            
-            for (const groupName in originalLinks) {
-                if (!Array.isArray(originalLinks[groupName])) continue;
-                const validIdsInGroup = [];
-                for (const id of originalLinks[groupName]) {
-                    if (allKnownIds.has(id) && !seenIds.has(id)) {
-                        validIdsInGroup.push(id);
-                        seenIds.add(id);
-                    }
-                }
-                if (validIdsInGroup.length > 0) cleanedLinks[groupName] = validIdsInGroup.sort();
-            }
-            
-            if (JSON.stringify(originalLinks) === JSON.stringify(cleanedLinks)) {
-                return this.showToast('Re-sync complete. No issues found!');
-            }
-
-            this.linkedQuestions = cleanedLinks;
-            this.showLoader(true, 'Found inconsistencies. Saving corrected data...');
-            try {
-              await server.saveLinks(JSON.stringify(this.linkedQuestions));
-              this.showToast('Data re-synced successfully!');
-              this.initialize(); // Full reload
-            } catch(e) { this.handleError(e); }
-        },
-
-        handleCheckboxToggle(e) {
-            const checkbox = e.target;
-            const questionId = checkbox.value;
-            const isChecked = checkbox.checked;
-            const idsToToggle = e.shiftKey ? [questionId] : this.getRelatedQuestionIds(questionId);
-
-            idsToToggle.forEach(id => {
-                if (isChecked) this.pendingSelections.add(id);
-                else this.pendingSelections.delete(id);
-            });
-            // Force Alpine to see the Set change
-            this.pendingSelections = new Set(this.pendingSelections); 
-        },
-        
-        handleRemoveSelection(idToRemove) {
-            const relatedIds = this.getRelatedQuestionIds(idToRemove);
-            relatedIds.forEach(id => this.pendingSelections.delete(id));
-            this.pendingSelections = new Set(this.pendingSelections);
-        },
-
-        handleClearSelections() {
-            if (this.pendingSelections.size === 0) return;
-            this.pendingSelections.clear();
-            this.pendingSelections = new Set(this.pendingSelections);
-            this.showToast('All selections cleared.');
-        },
-
-        async handleHideQuestion(id) {
-            this.hiddenQuestionIds.add(id);
-            this.hiddenQuestionIds = new Set(this.hiddenQuestionIds); // Force reactivity
-            try {
-              await server.saveHiddenQuestions(JSON.stringify(Array.from(this.hiddenQuestionIds)));
-            } catch(e) { this.handleError(e); }
-        },
-
-        async handleUnhideQuestions() {
-            const selectedIds = Array.from(document.querySelectorAll('.unhide-checkbox:checked')).map(cb => cb.dataset.id);
-            if (selectedIds.length === 0) return this.showToast('Please select questions to unhide.', 'error');
-            
-            selectedIds.forEach(id => this.hiddenQuestionIds.delete(id));
-            this.showLoader(true, 'Unhiding questions...');
-            try {
-              await server.saveHiddenQuestions(JSON.stringify(Array.from(this.hiddenQuestionIds)));
-              this.showToast('Questions have been unhidden.');
-              this.hiddenQuestionIds = new Set(this.hiddenQuestionIds); // Force update
-            } catch(e) { this.handleError(e); }
-            finally { this.showLoader(false); }
-        },
-        
-        async handleArchiveQuestions() {
-            const selectedIds = Array.from(document.querySelectorAll('.unhide-checkbox:checked')).map(cb => cb.dataset.id);
-            if (selectedIds.length === 0) return this.showToast('Please select questions to archive.', 'error');
-            
-            selectedIds.forEach(id => {
-                this.hiddenQuestionIds.delete(id);
-                this.archivedQuestionIds.add(id);
-            });
-
-            this.showLoader(true, 'Archiving questions...');
-            try {
-              await server.saveHiddenAndArchivedQuestions(
-                  JSON.stringify(Array.from(this.hiddenQuestionIds)),
-                  JSON.stringify(Array.from(this.archivedQuestionIds))
-              );
-              this.showToast('Questions have been archived.');
-              this.hiddenQuestionIds = new Set(this.hiddenQuestionIds);
-              this.archivedQuestionIds = new Set(this.archivedQuestionIds);
-            } catch(e) { this.handleError(e); }
-            finally { this.showLoader(false); }
-        },
-        
-        async handleUnhideFromArchive() {
-            const selectedIds = Array.from(document.querySelectorAll('.unarchive-checkbox:checked')).map(cb => cb.dataset.id);
-            if (selectedIds.length === 0) return this.showToast('Please select questions to move to Hidden.', 'error');
-            
-            selectedIds.forEach(id => {
-                this.archivedQuestionIds.delete(id);
-                this.hiddenQuestionIds.add(id);
-            });
-
-            this.showLoader(true, 'Moving questions to Hidden...');
-            try {
-              await server.saveHiddenAndArchivedQuestions(
-                  JSON.stringify(Array.from(this.hiddenQuestionIds)),
-                  JSON.stringify(Array.from(this.archivedQuestionIds))
-              );
-              this.showToast('Questions have been moved to Hidden.');
-              this.hiddenQuestionIds = new Set(this.hiddenQuestionIds);
-              this.archivedQuestionIds = new Set(this.archivedQuestionIds);
-            } catch(e) { this.handleError(e); }
-            finally { this.showLoader(false); }
-        },
-        
-        async switchToCombineView(options = {}) {
-          this.showLoader(true, 'Getting active sheet data...');
-          try {
-            const data = await server.getActiveSheetData();
-            this.combineData = { ...data, ...options };
-            
-            // Set up new computed properties for the view
-            this.combineData.headersToDisplay = this.combineData.preselectedHeaders || this.combineData.headers;
-            this.updateOtherColumnOptions(); // Set initial dropdown state
-            
-            this.currentView = 'combine';
-          } catch(e) { this.handleError(e); }
-          finally { this.showLoader(false); }
-        },
-        
-        getSelectionsForCombine() {
-            const checkedIds = Array.from(this.pendingSelections);
-            if (checkedIds.length === 0) {
-                this.showToast('Please select columns from the list to combine.', 'error');
-                return null;
-            }
-            const selectionsBySheet = {};
-            checkedIds.forEach(id => {
-                const question = this.allQuestions.find(q => q.id === id);
-                if (!question) return;
-                const sheetName = question.sheet;
-                if (!selectionsBySheet[sheetName]) selectionsBySheet[sheetName] = [];
-                selectionsBySheet[sheetName].push(id);
-            });
-
-            const selectedSheets = Object.keys(selectionsBySheet);
-            if (selectedSheets.length > 1) {
-                this.showToast('Please select columns from only one sheet at a time to combine.', 'error');
-                return null;
-            }
-            
-            const targetSheet = selectedSheets[0];
-            const selectedIds = selectionsBySheet[targetSheet];
-            const selectedHeaders = selectedIds.map(id => this.allQuestions.find(q => q.id === id)?.question).filter(Boolean);
-
-            return { targetSheet, selectedHeaders, selectedIds };
-        },
-
-        async handleCombineWithSelection() {
-          const selections = this.getSelectionsForCombine();
-          if (!selections) return;
-          
-          this.showLoader(true, `Switching to ${selections.targetSheet}...`);
-          try {
-            await server.setActiveSheet(selections.targetSheet);
-            this.switchToCombineView({ 
-                preselectedHeaders: selections.selectedHeaders, 
-                idsToArchive: selections.selectedIds
-             });
-          } catch(e) { this.handleError(e); }
-        },
-        
-        async handleCombineSingleChoice() {
-            const selections = this.getSelectionsForCombine();
-            if (!selections) return;
-
-            if (selections.selectedHeaders.length !== 2) {
-                return this.showToast('Please select exactly two columns for this option.', 'error');
-            }
-
-            const options = {
-                selectedHeaders: selections.selectedHeaders,
-                sheetName: selections.targetSheet,
-                idsToArchive: selections.selectedIds
-            };
-            
-            this.showLoader(true, 'Combining single-choice columns...');
-            try {
-              const response = await server.combineSingleChoiceColumns(options);
-              if (response.success) {
-                  this.showToast(response.message);
-                  this.initialize(); // Reload all data
-              } else {
-                  this.handleError(new Error(response.message));
-              }
-            } catch(e) { this.handleError(e); }
-            finally { this.showLoader(false); }
-        },
-        
-        // This helper updates the state for the 'Other' dropdown
-        updateOtherColumnOptions() {
-            if (this.currentView !== 'combine') return;
-            const checkedHeaders = new Set(
-              Array.from(document.querySelectorAll('.combine-check:checked'))
-                   .map(cb => cb.dataset.header)
-            );
-            this.combineData.otherColumnOptions = this.combineData.headers.filter(h => !checkedHeaders.has(h));
-        },
-        
-        async handleCombine() {
-          const newColumnHeader = document.getElementById('new-column-header').value.trim();
-          if (!newColumnHeader) return this.showToast('Please provide a header.', 'error');
-          
-          const replacements = [];
-          const combinedHeaders = new Set();
-          document.querySelectorAll('.combine-check:checked').forEach(box => {
-            const header = box.dataset.header;
-            const text = document.querySelector(`.combine-text-input[data-header-for="${header}"]`).value.trim();
-            replacements.push({ header, text });
-            combinedHeaders.add(header);
-          });
-
-          if (replacements.length === 0) return this.showToast('Please select at least one column.', 'error');
-          
-          const otherColumnHeader = document.getElementById('other-column-select').value;
-          if (otherColumnHeader) combinedHeaders.add(otherColumnHeader);
-
-          const idsToArchive = this.allQuestions
-            .filter(q => q.sheet === this.combineData.sheetName && combinedHeaders.has(q.question))
-            .map(q => q.id);
-
-          const finalIdsToArchive = this.combineData.idsToArchive.length > 0 ? this.combineData.idsToArchive : idsToArchive;
-
-          const options = { 
-              replacements, 
-              otherColumnHeader, 
-              newColumnHeader, 
-              sheetName: this.combineData.sheetName,
-              idsToArchive: finalIdsToArchive
-          };
-          
-          this.showLoader(true, 'Combining columns...');
-          try {
-            const response = await server.combineCheckboxColumns(options);
-            if (response.success) {
-              this.showToast(response.message);
-              this.initialize(); // Reload
-            } else { this.handleError(new Error(response.message)); }
-          } catch(e) { this.handleError(e); }
-          finally { this.showLoader(false); }
-        },
-
-        async handleHideChecked() {
-            const checkedIds = Array.from(this.pendingSelections);
-            if (checkedIds.length === 0) return this.showToast('No questions selected to hide.', 'error');
-
-            checkedIds.forEach(id => {
-                this.hiddenQuestionIds.add(id);
-                this.pendingSelections.delete(id); 
-            });
-            
-            this.showLoader(true, 'Hiding questions...');
-            try {
-              await server.saveHiddenQuestions(JSON.stringify(Array.from(this.hiddenQuestionIds)));
-              this.showToast(`${checkedIds.length} question(s) hidden.`);
-              this.hiddenQuestionIds = new Set(this.hiddenQuestionIds);
-              this.pendingSelections = new Set(this.pendingSelections);
-              this.currentView = 'allQuestions'; // Go back to list
-            } catch(e) { this.handleError(e); }
-            finally { this.showLoader(false); }
-        },
-
-        async handleDeleteGroup(e) {
-            const deleteBtn = e.target;
-            const groupName = this.currentGroupName || this.findGroupForQuestion(this.sourceQuestion.id);
-
-            if (deleteBtn.textContent.includes('Confirm')) {
-                delete this.linkedQuestions[groupName];
-                this.showLoader(true, 'Deleting group...');
-                try {
-                  await server.saveLinks(JSON.stringify(this.linkedQuestions));
-                  this.showToast('Group deleted!');
-                  this.currentView = 'list';
-                  this.initialize(); // Reload
-                } catch(e) { this.handleError(e); }
-                finally { this.showLoader(false); }
-            } else {
-                const originalText = deleteBtn.textContent;
-                deleteBtn.textContent = 'Confirm Delete?';
-                deleteBtn.classList.add('text-red-800', 'font-bold');
-                setTimeout(() => { if (deleteBtn) { deleteBtn.textContent = originalText; deleteBtn.classList.remove('text-red-800', 'font-bold'); } }, 3000);
-            }
-        },
-        
-        async handleSave() {
-            const label = this.currentGroupName.trim();
-            if (!label) return this.showToast('Please provide a group label.', 'error');
-            
-            const selectedIds = Array.from(this.pendingSelections);
-            const oldGroupName = this.findGroupForQuestion(this.sourceQuestion.id);
-
-            if (oldGroupName && oldGroupName !== label) delete this.linkedQuestions[oldGroupName];
-            
-            Object.keys(this.linkedQuestions).forEach(group => {
-                // Corrected: Use 'this' instead of 'state'
-                this.linkedQuestions[group] = this.linkedQuestions[group].filter(id => !selectedIds.includes(id));
-                if (this.linkedQuestions[group].length === 0) delete this.linkedQuestions[group];
-            });
-            
-            if (selectedIds.length > 0) this.linkedQuestions[label] = selectedIds.sort();
-            else delete this.linkedQuestions[label]; // Delete group if empty
-
-            this.showLoader(true, 'Saving...');
-            try {
-              await server.saveLinks(JSON.stringify(this.linkedQuestions));
-              this.showToast('Group saved successfully!');
-              this.currentView = 'list';
-              this.initialize(); // Reload
-            } catch(e) { this.handleError(e); }
-            finally { this.showLoader(false); }
-        },
-
-        startLinking(questionId) {
-          const sourceQuestion = this.allQuestions.find(q => q.id === questionId);
-          if (!sourceQuestion) return;
-
-          this.sourceQuestion = sourceQuestion;
-          this.currentView = 'linking';
-          this.searchTerm = '';
-          this.currentGroupName = '';
-
-          const baseText = sourceQuestion.question.split('[')[0].trim();
-          const sourceSheet = sourceQuestion.sheet;
-          
-          const similarQuestionIds = this.allQuestions
-            .filter(q => q.sheet === sourceSheet && q.question.split('[')[0].trim() === baseText)
-            .map(q => q.id);
-          
-          this.pendingSelections = new Set(similarQuestionIds);
-        },
-
-        startEditingGroup(groupName) {
-          const groupIds = this.linkedQuestions[groupName];
-          if (!groupIds || groupIds.length === 0) return this.showToast('This group is empty or invalid.', 'error');
-          
-          this.sourceQuestion = this.allQuestions.find(q => q.id === groupIds[0]);
-          if (!this.sourceQuestion) {
-              this.sourceQuestion = {id: groupIds[0], question: 'N/A (Original source question may be deleted)', sheet: 'N/A'};
-          }
-          this.currentView = 'linking';
-          this.pendingSelections = new Set(groupIds);
-          this.currentGroupName = groupName;
-        },
-
-        // --- FACET HANDLERS ---
-        
-        /**
-         * @param {string} groupName
-         * @param {string} questionId
-         * @param {boolean} [splitByCommaOverride=false] - FIX: Pass this to preserve state on toggle
-         */
-        async startFacetedEditing(groupName, questionId, splitByComma = false, specificYear = null) {
-          this.facetData.pendingEdits = {};
-          this.facetData.groupName = groupName;
-          this.facetData.questionId = questionId;
-          this.facetData.splitByComma = splitByComma;
-          this.facetData.values = [];
-          this.facetData.countsLoaded = false;
-          this.facetData.isLoadingValues = true;
-          this.facetData.specificYear = specificYear;
-          
-          // Only update previousView if we're not already in facet view
-          // This preserves the original view when refreshing after applying changes
-          if (this.currentView !== 'facet') {
-              this.facetData.previousView = this.currentView;
-              
-              // Update previousViewLabel based on where we're coming from
-              if (this.currentView === 'list') {
-                  this.facetData.previousViewLabel = 'Tools';
-              } else if (this.currentView === 'linking') {
-                  this.facetData.previousViewLabel = 'Link Questions';
-              } else if (this.currentView === 'manage') {
-                  this.facetData.previousViewLabel = 'Manage Groups';
-              } else {
-                  this.facetData.previousViewLabel = 'Tools';
-              }
-          }
-
-          // Set the title
-          if (specificYear) {
-              if (groupName) {
-                  this.facetData.title = `Text Facet: ${groupName} (${specificYear} only)`;
-              } else {
-                  const q = this.allQuestions.find(q => q.id === questionId);
-                  this.facetData.title = `Text Facet: ${q ? q.question : 'Single Column'} (${specificYear})`;
-              }
-          } else if (groupName) {
-              this.facetData.title = `Text Facet: ${groupName}`;
-          } else {
-              const q = this.allQuestions.find(q => q.id === questionId);
-              this.facetData.title = `Text Facet: ${q ? q.question : 'Single Column'}`;
-          }
-
-          this.currentView = 'facet';
-
-          try {
-              const options = { 
-                  groupName: this.facetData.groupName,
-                  questionId: this.facetData.questionId,
-                  splitByComma: this.facetData.splitByComma,
-                  specificYear: specificYear
-              };
-              const facetResult = await server.getFacetData(options);
-              
-              this.facetData.values = facetResult.uniqueValues.map(val => ({ text: val, count: null }));
-              this.facetData.isLoadingValues = false;
-
-              const countMap = new Map(facetResult.valueCounts.map(item => [item.text, item.count]));
-              this.facetData.values.forEach(item => {
-                  item.count = countMap.get(item.text) || 0;
-              });
-              this.facetData.countsLoaded = true;
-
-          } catch (e) {
-              this.handleError(e);
-              this.facetData.isLoadingValues = false;
-          }
-      },
-
-        handleFacetCheckboxToggle() {
-            // Refetch all data, passing the specific year if it was set
-            this.startFacetedEditing(
-                this.facetData.groupName, 
-                this.facetData.questionId, 
-                this.facetData.splitByComma,
-                this.facetData.specificYear // NEW: Pass through the specific year
-            );
-        },
-
-        handleDirectEdit(originalValue, newValue) {
-            if (newValue.trim() === originalValue) {
-                delete this.facetData.pendingEdits[originalValue];
-            } else {
-                this.facetData.pendingEdits[originalValue] = newValue.trim();
-            }
-            // ====================================================================
-            // BUG FIX #1: Force reactivity by creating a new object reference.
-            // This ensures Alpine sees the change and re-renders the :value
-            // binding on the input field.
-            // ====================================================================
-            this.facetData.pendingEdits = { ...this.facetData.pendingEdits };
-        },
-        
-        handleCaseChange(originalValue, caseType) {
-            const currentValue = this.facetData.pendingEdits[originalValue] || originalValue;
-            let newValue;
-            if (caseType === 'upper') newValue = currentValue.toUpperCase();
-            else if (caseType === 'sentence') newValue = toSentenceCase(currentValue);
-            else if (caseType === 'capital') newValue = toCapitalCase(currentValue);
-            
-            if (newValue !== originalValue) {
-                this.facetData.pendingEdits[originalValue] = newValue;
-            } else {
-                delete this.facetData.pendingEdits[originalValue];
-            }
-            // ====================================================================
-            // BUG FIX #2: Force reactivity here as well for the capitalization
-            // buttons.
-            // ====================================================================
-            this.facetData.pendingEdits = { ...this.facetData.pendingEdits };
-        },
-        
-        handleRevertEdit(originalValue) {
-            delete this.facetData.pendingEdits[originalValue];
-            // ====================================================================
-            // BUG FIX #3: Also apply the fix to the revert button.
-            // ====================================================================
-            this.facetData.pendingEdits = { ...this.facetData.pendingEdits };
-        },
-        
-        // NEW: Apply case change to all items
-        handleMassCaseChange(caseType) {
-            if (this.facetData.isLoadingValues) return;
-            
-            // ====================================================================
-            // BUG FIX #4: Batch updates to avoid N re-renders.
-            // We'll create a temporary clone, modify it in the loop,
-            // and then assign it back to the state *once* at the end.
-            // ====================================================================
-            const newEdits = { ...this.facetData.pendingEdits };
-
-            this.facetData.values.forEach(item => {
-                const originalValue = item.text;
-                // Get the *current* value from our temporary clone
-                const currentValue = newEdits.hasOwnProperty(originalValue) 
-                                   ? newEdits[originalValue] 
-                                   : originalValue;
-                
-                if (!currentValue) return; // Skip empty strings
-
-                let newValue;
-                if (caseType === 'sentence') {
-                    newValue = toSentenceCase(currentValue);
-                } else if (caseType === 'capital') {
-                    newValue = toCapitalCase(currentValue);
-                }
-                
-                // Update the temporary clone directly
-                if (newValue !== undefined) {
-                    if (newValue.trim() === originalValue) {
-                        delete newEdits[originalValue];
-                    } else {
-                        newEdits[originalValue] = newValue.trim();
-                    }
-                }
-            });
-            
-            // Now, assign the fully-updated clone back to the state
-            // to trigger a single re-render.
-            this.facetData.pendingEdits = newEdits;
-            
-            this.showToast(`All values queued for ${caseType} case change.`);
-        },
-        
-        async handleApplyAllFacetChanges() {
-            const edits = Object.entries(this.facetData.pendingEdits).map(([from, to]) => ({ from, to }));
-            if (edits.length === 0) return;
-
-            const options = {
-                groupName: this.facetData.groupName,
-                questionId: this.facetData.groupName ? null : this.facetData.questionId,
-                edits: edits,
-                splitByComma: this.facetData.splitByComma,
-                specificYear: this.facetData.specificYear // NEW: Pass the specific year
-            };
-
-            this.showLoader(true, 'Applying changes to spreadsheet...');
-            try {
-                const response = await server.applyMassEdit(options);
-                if (response.success) {
-                    this.showToast(response.message);
-                    // Re-trigger the facet editing with the same parameters
-                    this.startFacetedEditing(
-                        this.facetData.groupName, 
-                        this.facetData.questionId, 
-                        this.facetData.splitByComma,
-                        this.facetData.specificYear // NEW: Pass through the specific year
-                    );
-                } else {
-                    this.handleError(new Error(response.message));
-                }
-            } catch(e) { this.handleError(e); }
-            finally { this.showLoader(false); }
-        },
-        
-        // --- NEW: Function to handle back navigation from facet view ---
-        handleFacetBack(event) {
-            const hasEdits = Object.keys(this.facetData.pendingEdits).length > 0;
-            
-            if (!hasEdits) {
-                // No edits, just go back
-                this.currentView = this.facetData.previousView || 'list';
-                return;
-            }
-
-            // Has edits, need confirmation
-            const btn = event.currentTarget; // Use currentTarget to get the button
-            const originalHtml = btn.innerHTML; // Store the original HTML (with icon and span)
-
-            if (btn.dataset.confirm === 'true') {
-                // Already confirmed, navigate
-                this.currentView = this.facetData.previousView || 'list';
-                // No need to restore text, view is changing
-            } else {
-                // First click, ask for confirmation
-                btn.innerHTML = 'Unsaved changes. Click again to exit.';
-                btn.dataset.confirm = 'true';
-                btn.classList.add('text-red-600');
-                
-                // Reset after 3 seconds
-                setTimeout(() => {
-                    if (btn && btn.dataset.confirm === 'true') { // Only reset if still in confirm state
-                        btn.innerHTML = originalHtml;
-                        btn.dataset.confirm = 'false';
-                        btn.classList.remove('text-red-600');
-                    }
-                }, 3000);
-            }
-        },
-        // --- End of NEW function ---
-
-        // --- Drag and Drop Handlers ---
-        handleFacetDragStart(event, originalValue) {
-          this.draggedFacetItem = originalValue;
-          event.dataTransfer.setData('text/plain', originalValue);
-          event.dataTransfer.effectAllowed = 'move';
-          // Add visual cue
-          event.target.closest('.facet-item').classList.add('is-dragging');
-        },
-        
-        handleFacetDrop(event, targetOriginalValue) {
-          event.target.closest('.facet-item').classList.remove('drag-over-target');
-          const draggedOriginalValue = event.dataTransfer.getData('text/plain');
-          
-          if (!draggedOriginalValue || draggedOriginalValue === targetOriginalValue) return;
-          
-          // Find the target's *current* text value
-          const targetNewValue = this.facetData.pendingEdits[targetOriginalValue] || targetOriginalValue;
-          
-          // Re-use the edit handler to merge the dragged item into the target
-          // This will now correctly trigger a re-render
-          this.handleDirectEdit(draggedOriginalValue, targetNewValue);
-        },
-        
-        // --- NEW: Preview Handler ---
-        async handlePreviewToggle(item) {
-            const itemKey = item.key;
-            if (this.expandedPreviews.has(itemKey)) {
-                this.expandedPreviews.delete(itemKey);
-                // Force reactivity
-                this.expandedPreviews = new Set(this.expandedPreviews); 
-            } else {
-                this.expandedPreviews.add(itemKey);
-                // Force reactivity
-                this.expandedPreviews = new Set(this.expandedPreviews); 
-                
-                // Fetch data only if not already loaded
-                if (!this.previewData[itemKey]) {
-                    this.loadingPreviews.add(itemKey); // NEW
-                    try {
-                        const options = { 
-                            groupName: item.type === 'group' ? item.groupName : null, 
-                            questionId: item.type === 'single' ? item.representativeQuestion.id : null 
-                        };
-                        
-                        // OPTIMIZATION 2: Call new consolidated server function
-                        // This one call replaces getSheetsForGroup AND the loop for getPreviewDataForSheet
-                        const previewData = await server.getFullPreviewData(options);
-
-                        // We get all data at once, so we can just assign it
-                        this.previewData[itemKey] = previewData;
-                        this.previewData = {...this.previewData}; // Force reactivity
-                        
-                    } catch (e) {
-                        this.handleError(e); // Use existing error handler
-                        // Clean up if fetch fails
-                        delete this.previewData[itemKey]; // Remove partial data
-                        this.previewData = {...this.previewData};
-                        this.expandedPreviews.delete(itemKey);
-                        this.expandedPreviews = new Set(this.expandedPreviews);
-                        this.loadingPreviews.delete(itemKey); // NEW: Also clear from loading set on error
-                    } finally {
-                        this.loadingPreviews.delete(itemKey); // NEW
-                    }
-                }
-            }
-        },
-
-      };
-    }
-  </script>
 </head>
 <body class="p-4">
+  <!-- Include shared utilities -->
+  <?!= HtmlService.createHtmlOutputFromFile('SharedUtils').getContent(); ?>
 
-  <!-- 
-    ALPINE DATA: The x-data="app()" attribute initializes our Alpine.js component.
-    The app() function is defined in the script block below and returns an
-    object containing all our state and methods.
-  -->
-  <div id="app" x-data="app()" x-init="initialize()" x-cloak>
+  <div id="app" x-data="sidebarApp()" x-init="initialize()" x-cloak>
     
-    <!-- 
-      VIEWS: We use x-if (or x-show) to toggle between different views
-      based on the 'currentView' state property. This replaces the old
-      render() function router.
-    -->
-
-    <!-- ======================= View: List (Dashboard) ======================= -->
-    <!-- MODIFICATION: Changed x-if to x-show to preserve scroll state -->
+    <!-- ======================= View: Dashboard ======================= -->
     <div x-show="currentView === 'list'" class="animate-fade-in">
-        <div class="flex justify-between items-center mb-4">
-            <h1 class="text-xl font-bold text-slate-800">Survey Tools</h1>
-            <!-- @click is the Alpine equivalent of onclick -->
-            <button @click="initialize()" title="Reload all data" class="p-2 rounded-md hover:bg-slate-200 transition">
-              <svg class="text-slate-600" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>
-            </button>
+      <div class="flex justify-between items-center mb-4">
+        <h1 class="text-xl font-bold">Survey Tools</h1>
+        <button @click="initialize()" title="Reload" class="btn btn-outline btn-sm">↻</button>
+      </div>
+      
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+        <div class="card">
+          <div class="card-body text-center">
+            <h2 class="font-bold text-lg mb-2">Link Questions</h2>
+            <p class="text-sm text-secondary mb-4">Create or edit linked question groups</p>
+            <button @click="currentView = 'allQuestions'" class="btn btn-primary w-full">Link Questions</button>
+          </div>
         </div>
-        <div class="space-y-6 pt-8">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <!-- @click="currentView = '...'" is how we change pages -->
-                <div class="p-6 bg-white border rounded-lg text-center flex flex-col">
-                    <h2 class="font-bold text-lg text-slate-700">Link Questions</h2>
-                    <p class="text-sm text-slate-500 my-3 flex-grow">Create new linked groups or edit existing ones from the main list.</p>
-                    <button @click="currentView = 'allQuestions'" class="btn btn-primary w-full mt-4">Link Questions</button>
-                </div>
-                <div class="p-6 bg-white border rounded-lg text-center flex flex-col">
-                    <h2 class="font-bold text-lg text-slate-700">Facet Questions</h2>
-                    <p class="text-sm text-slate-500 my-3 flex-grow">Clean data for any question or group, including hidden ones.</p>
-                    <button @click="currentView = 'facetList'" class="btn btn-primary w-full mt-4">Facet Questions</button>
-                </div>
-                <div class="p-6 bg-white border rounded-lg text-center flex flex-col">
-                    <h2 class="font-bold text-lg text-slate-700">Manage Linked Groups</h2>
-                    <p class="text-sm text-slate-500 my-3 flex-grow">Edit, rename, facet, or unlink existing question groups.</p>
-                    <button @click="currentView = 'manage'" class="btn btn-secondary w-full mt-4">Manage Groups</button>
-                </div>
-                 <div class="p-6 bg-white border rounded-lg text-center flex flex-col">
-                    <h2 class="font-bold text-lg text-slate-700">Manage Hidden Questions</h2>
-                    <p class="text-sm text-slate-500 my-3 flex-grow">View, unhide, or archive questions.</p>
-                    <button @click="currentView = 'hidden'" class="btn btn-secondary w-full mt-4">Manage Hidden</button>
-                </div>
-                <div class="p-6 bg-white border rounded-lg text-center flex flex-col">
-                    <h2 class="font-bold text-lg text-slate-700">Manage Archived Questions</h2>
-                    <p class="text-sm text-slate-500 my-3 flex-grow">View or restore questions that were automatically archived after being combined.</p>
-                    <button @click="currentView = 'archive'" class="btn btn-secondary w-full mt-4">Manage Archive</button>
-                </div>
-            </div>
-             <div class="text-center pt-4">
-                 <button @click="handleForceResync()" title="Fix data inconsistencies" class="text-sm text-blue-600 hover:underline">Data incorrect? Force a re-sync</button>
-             </div>
+        
+        <div class="card">
+          <div class="card-body text-center">
+            <h2 class="font-bold text-lg mb-2">Text Faceting</h2>
+            <p class="text-sm text-secondary mb-4">Clean and normalize text responses</p>
+            <button @click="currentView = 'facetList'" class="btn btn-primary w-full">Text Faceting</button>
+          </div>
+        </div>
+        
+        <div class="card">
+          <div class="card-body text-center">
+            <h2 class="font-bold text-lg mb-2">Manage Groups</h2>
+            <p class="text-sm text-secondary mb-4">View, rename, or delete groups</p>
+            <button @click="currentView = 'manage'" class="btn btn-primary w-full">Manage Groups</button>
+          </div>
         </div>
       </div>
-    
+      
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+        <div class="card">
+          <div class="card-body text-center">
+            <h2 class="font-bold mb-2">Hidden Questions</h2>
+            <p class="text-sm text-secondary mb-4">
+              <span x-text="hiddenQuestionIds.size"></span> questions hidden
+            </p>
+            <button @click="currentView = 'hidden'" class="btn btn-secondary w-full">Manage Hidden</button>
+          </div>
+        </div>
+        
+        <div class="card">
+          <div class="card-body text-center">
+            <h2 class="font-bold mb-2">Archived Questions</h2>
+            <p class="text-sm text-secondary mb-4">
+              <span x-text="archivedQuestionIds.size"></span> questions archived
+            </p>
+            <button @click="currentView = 'archived'" class="btn btn-secondary w-full">Manage Archived</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
-    <!-- ======================= View: All Questions (for Linking) ======================= -->
-    <!-- MODIFICATION: Changed x-if to x-show to preserve scroll state -->
+    <!-- ======================= View: All Questions ======================= -->
     <div x-show="currentView === 'allQuestions'" class="animate-fade-in">
-         <div class="mb-4">
-            <button @click="currentView = 'list'" class="text-blue-600 hover:underline text-sm">&larr; Back to Tools</button>
-         </div>
-         <div class="p-4 bg-white border rounded-lg">
-              <h2 class="font-bold text-slate-700">Link Questions</h2>
-              <p class="text-sm text-slate-500 my-3">Select a question to link it with others, or edit an existing group.</p>
-              <!-- 
-                DATA BINDING: x-model="searchTerm" creates a two-way binding
-                between this input and the 'searchTerm' property in our state.
-              -->
-              <input type="text" x-model="searchTerm" class="input mb-2" placeholder="Search questions or groups...">
-              
-              <!-- 
-                LIST RENDERING: x-for loops over an array in our state.
-                This replaces the old renderAllQuestionsView() JS function.
-                We define 'linkableItems' as a "getter" in our Alpine component.
-              -->
-              <div class="space-y-2 overflow-y-auto" style="height: 65vh;">
-                <template x-for="item in linkableItems" :key="item.key">
-                  <div class="question-item flex items-center w-full text-left p-3 bg-white border border-slate-200 rounded-lg">
-                    <div class="flex-grow text-left">
-                        <!-- Group View -->
-                        <template x-if="item.type === 'group'">
-                          <div>
-                            <span class="font-semibold text-blue-700 text-sm" x-text="item.groupName"></span>
-                            <span class="block text-xs text-slate-400">
-                              Represents <span x-text="item.questionCount"></span> questions
-                              (e.g., "<span x-text="item.representativeQuestion.question"></span>" on <span x-text="item.representativeQuestion.sheet"></span>)
-                            </span>
-                          </div>
-                        </template>
-                        <!-- Single Question View -->
-                        <template x-if="item.type === 'single'">
-                          <div>
-                            <div class="flex items-center">
-                               <span class="font-semibold text-slate-700 text-sm" x-text="item.representativeQuestion.question"></span>
-                               <span class="ml-2 text-xs font-medium bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full border border-slate-300">Single</span>
-                           </div>
-                           <span class="block text-xs text-slate-400 mt-1" x-text="item.representativeQuestion.sheet"></span>
-                           <template x-if="item.representativeQuestion.previousQuestion">
-                               <span class="block text-xs text-slate-400 italic mt-1" x-text="`Context: ${item.representativeQuestion.previousQuestion}`"></span>
-                           </template>
-                          </div>
-                        </template>
-                    </div>
-                    <div class="flex items-center space-x-2 flex-shrink-0 ml-4">
-                        <button @click="startEditingGroup(item.groupName)" x-show="item.type === 'group'" title="Edit this group" class="btn btn-secondary text-sm">Edit</button>
-                        <button @click="startLinking(item.representativeQuestion.id)" x-show="item.type === 'single'" title="Link this question" class="btn btn-secondary text-sm">Link</button>
-                        
-                        <button @click="startFacetedEditing(item.groupName, null)" x-show="item.type === 'group'" title="Facet this group" class="btn btn-secondary text-sm bg-green-600 hover:bg-green-700">Facet</button>
-                        <button @click="startFacetedEditing(null, item.representativeQuestion.id)" x-show="item.type === 'single'" title="Facet this question" class="btn btn-secondary text-sm bg-green-600 hover:bg-green-700">Facet</button>
-                        
-                        <button @click="handleHideQuestion(item.representativeQuestion.id)" title="Hide this" class="p-2 text-slate-400 hover:text-red-600">
-                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7.028 7.028 0 0 0-2.79.588l.77.771A5.944 5.944 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.134 13.134 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755-.165.165-.337.328-.517.486l.708.709z"/><path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829l.822.822zm-2.943 1.288.78.781c.42.126.88.183 1.365.183a3.5 3.5 0 0 0 3.5-3.5c0-.176-.022-.35-.065-.528l-.78.78a2.5 2.5 0 0 1-2.829 2.829l-.822-.822zm-2.28 2.28.78.781c.42.126.88.183 1.365.183a3.5 3.5 0 0 0 3.5-3.5c0-.176-.022-.35-.065-.528l-.78.78a2.5 2.5 0 0 1-2.829 2.829l-.822-.822zm-2.28 2.28.78.781c.42.126.88.183 1.365.183a3.5 3.5 0 0 0 3.5-3.5c0-.176-.022-.35-.065-.528l-.78.78a2.5 2.5 0 0 1-2.829 2.829l-.822-.822zm-2.28 2.28.78.781c.42.126.88.183 1.365.183a3.5 3.5 0 0 0 3.5-3.5c0-.176-.022-.35-.065-.528l-.78.78a2.5 2.5 0 0 1-2.829 2.829l-.822-.822z"/><path d="M.5 3.13l.707.707a11.522 11.522 0 0 0 1.583 1.583l.707.707a11.522 11.522 0 0 0 1.583 1.583l.707.707a11.522 11.522 0 0 0 1.583 1.583l.707.707a11.522 11.522 0 0 0 1.583 1.583l.707.707a11.522 11.522 0 0 0 1.583 1.583l.707.707a11.522 11.522 0 0 0 1.583 1.583l.707.707a11.522 11.522 0 0 0 1.583 1.583l.707.707a11.522 11.522 0 0 0 1.583 1.583l.707.707a11.522 11.522 0 0 0 1.583 1.583l.707.707a11.522 11.522 0 0 0 1.583 1.583l.707.707a11.522 11.522 0 0 0 1.583 1.583l.707.707a11.522 11.522 0 0 0 1.583 1.583l.707.707a11.522 11.522 0 0 0 1.583 1.583l.707.707a11.522 11.522 0 0 0 1.583 1.583l.707.707a11.522 11.522 0 0 0 1.583 1.583l.707.707L15.5 13.87l-.707-.707-1.583-1.583-.707-.707-1.583-1.583-.707-.707-1.583-1.583-.707-.707L.5 3.13zm2.293 8.293a12.213 12.213 0 0 1-1.282-1.282l.707-.707a11.23 11.23 0 0 0 1.282 1.282l-.707.707zM4.18 9.582a9.922 9.922 0 0 0-1.84 1.84l.707.707a8.922 8.922 0 0 1 1.84-1.84l-.707-.707z"/></svg>
-                        </button>
-                    </div>
-                  </div>
-                </template>
-              </div>
-         </div>
+      <div class="flex items-center gap-2 mb-4">
+        <button @click="currentView = 'list'" class="text-primary hover:underline text-sm">← Back to Tools</button>
       </div>
-    
-    
-    <!-- ======================= View: Facet List ======================= -->
-    <!-- MODIFICATION: Changed x-if to x-show to preserve scroll state -->
-    <!-- This view is very similar to 'allQuestions', but points to a different computed list 'facetableItems' -->
-    <div x-show="currentView === 'facetList'" class="animate-fade-in">
-         <div class="mb-4">
-            <button @click="currentView = 'list'" class="text-blue-600 hover:underline text-sm">&larr; Back to Tools</button>
-         </div>
-         <div class="p-4 bg-white border rounded-lg">
-              <h2 class="font-bold text-slate-700">Facet Questions</h2>
-              <p class="text-sm text-slate-500 my-3">Select any question or group to clean its data. This list includes hidden questions.</p>
-              <input type="text" x-model="facetListSearchTerm" class="input mb-2" placeholder="Search questions or groups...">
-              
-              <div class="space-y-2 overflow-y-auto" style="height: 65vh;">
-                <template x-for="item in facetableItems" :key="item.key">
-                  <!-- MODIFIED: Wrap item in a div for preview expansion -->
-                  <div class="question-item-wrapper w-full text-left bg-white border border-slate-200 rounded-lg">
-                    <div class="flex items-center p-3">
-                      <!-- NEW: Buttons moved to the left -->
-                      <div class="flex items-center space-x-2 flex-shrink-0 mr-4">
-                          <button 
-                            @click="handlePreviewToggle(item)" 
-                            :disabled="loadingPreviews.has(item.key)"
-                            class="btn btn-sm btn-secondary bg-blue-100 text-blue-700 hover:bg-blue-200" 
-                            :class="{ 'opacity-50 cursor-not-allowed': loadingPreviews.has(item.key) }"
-                            title="Preview data">
-                              <!-- Show spinner on button if this specific one is loading -->
-                              <template x-if="loadingPreviews.has(item.key)">
-                                <div class="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
-                              </template>
-                              <template x-if="!loadingPreviews.has(item.key)">
-                                <span x-text="expandedPreviews.has(item.key) ? '▾' : '▸'"></span>
-                              </template>
-                          </button>
-                          <button 
-                            @click="startFacetedEditing(item.groupName, item.type === 'single' ? item.representativeQuestion.id : null)" 
-                            title="Facet this item" 
-                            class="btn btn-sm btn-secondary bg-green-600 hover:bg-green-700">
-                              Facet
-                          </button>
-                      </div>
-
-                      <div class="flex-grow text-left">
-                          <!-- Group View -->
-                          <template x-if="item.type === 'group'">
-                            <div>
-                              <span class="font-semibold text-blue-700 text-sm" x-text="item.groupName"></span>
-                              <span class="block text-xs text-slate-400">
-                                Represents <span x-text="item.questionCount"></span> questions
-                                (e.g., "<span x-text="item.representativeQuestion.question"></span>" on <span x-text="item.representativeQuestion.sheet"></span>)
-                              </span>
-                            </div>
-                          </template>
-                          <!-- Single Question View -->
-                          <template x-if="item.type === 'single'">
-                            <div>
-                              <div class="flex items-center">
-                                 <span class="font-semibold text-slate-700 text-sm" x-text="item.representativeQuestion.question"></span>
-                                 <span x-show="hiddenQuestionIds.has(item.representativeQuestion.id)" class="ml-2 text-xs font-medium bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full border border-yellow-300">Hidden</span>
-                                 <span class="ml-2 text-xs font-medium bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full border border-slate-300">Single</span>
-                             </div>
-                             <span class="block text-xs text-slate-400 mt-1" x-text="item.representativeQuestion.sheet"></span>
-                             <template x-if="item.representativeQuestion.previousQuestion">
-                                 <span class="block text-xs text-slate-400 italic mt-1" x-text="`Context: ${item.representativeQuestion.previousQuestion}`"></span>
-                             </template>
-                            </div>
-                          </template>
-                      </div>
-                    </div>
-                    
-                    <!-- NEW: Preview Data section -->
-                    <template x-if="expandedPreviews.has(item.key)">
-                      <div class="p-3 border-t border-slate-200">
-                        <!-- This spinner will show *until* previewData[item.key] is created -->
-                        <template x-if="loadingPreviews.has(item.key)">
-                           <div class="flex items-center p-2">
-                              <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
-                              <span class="ml-2 text-xs text-slate-500">Loading preview...</span>
-                           </div>
-                        </template>
-                        <!-- OPTIMIZATION 2: This logic is now simpler, as previewData[item.key] arrives complete -->
-                        <!-- This part will render *as soon as* previewData[item.key] exists -->
-                        <template x-if="previewData[item.key]">
-                          <div class="preview-container pb-2">
-                              <!-- This x-for loops over the *keys* (years) in the object -->
-                              <template x-for="year in Object.keys(previewData[item.key])" :key="year">
-                                  <div class="preview-year cursor-pointer hover:bg-blue-100 transition-colors" 
-                                      @click="startFacetedEditing(item.groupName, item.questionId, false, year)"
-                                      :title="'Click to text facet ' + year + ' only'">
-                                      <strong class="text-xs text-slate-700 block mb-1" x-text="year"></strong>
-                                      <!-- Show first 5 answers -->
-                                      <template x-for="(answer, index) in previewData[item.key][year].slice(0, 5)" :key="index">
-                                          <span class="preview-answer text-slate-600" x-text="answer || '—'"></span>
-                                      </template>
-                                      <!-- Show count if more than 5 -->
-                                      <template x-if="previewData[item.key][year] && previewData[item.key][year].length > 5">
-                                          <span class="preview-answer text-slate-400 italic">+<span x-text="previewData[item.key][year].length - 5"></span> more</span>
-                                      </template>
-                                      <!-- This checks if the array of answers is empty -->
-                                      <template x-if="!previewData[item.key][year] || previewData[item.key][year].length === 0">
-                                          <span class="preview-answer text-slate-400 italic">—</span>
-                                      </template>
-                                  </div>
-                              </template>
-                              <!-- This checks if the entire previewData object for this item is empty -->
-                              <template x-if="Object.keys(previewData[item.key]).length === 0">
-                                  <span class="text-xs text-slate-400 italic">No preview data available.</span>
-                              </template>
-                          </div>
-                        </template>
-                      </div>
-                    </template>
-                  </div>
-                </template>
-              </div>
-         </div>
+      
+      <div class="mb-4">
+        <input type="text" x-model="searchTerm" class="input" placeholder="Search questions...">
       </div>
-    
-    
-    <!-- ======================= View: Manage Groups ======================= -->
-    <!-- MODIFICATION: Changed x-if to x-show to preserve scroll state -->
-    <div x-show="currentView === 'manage'" class="animate-fade-in">
-        <div class="mb-4">
-          <button @click="currentView = 'list'" class="text-blue-600 hover:underline text-sm">&larr; Back to Tools</button>
-        </div>
-        <h1 class="text-xl font-bold text-slate-800">Manage Linked Groups</h1>
-        <div class="my-4 space-y-2">
-            <input type="text" x-model="manageSearchTerm" class="input" placeholder="Search groups by label...">
-            <div class="flex space-x-2">
-                <button @click="handleMassUnlink($event)" class="btn btn-danger w-full">Unlink Selected</button>
-                <button @click="handleUnlinkAll($event)" class="btn btn-danger w-full bg-red-800 hover:bg-red-900">Unlink All</button>
+      
+      <div class="list overflow-y-auto" style="max-height: 60vh;">
+        <template x-for="item in linkableItems" :key="item.key">
+          <div class="list-item flex items-center justify-between">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span x-show="item.type === 'group'" class="badge badge-primary" x-text="item.questionCount"></span>
+                <span class="font-medium" x-text="item.groupName || item.representativeQuestion.question"></span>
+              </div>
+              <div class="text-xs text-secondary" x-text="item.representativeQuestion.sheet"></div>
             </div>
-        </div>
-        <div class="space-y-2 overflow-y-auto" style="max-height: 55vh;">
-            <template x-for="groupName in filteredManageGroups" :key="groupName">
-              <div class="group-item flex items-center p-3 bg-white border border-slate-200 rounded-lg">
-                  <input type="checkbox" :data-group="groupName" class="mr-3 h-4 w-4 unlink-checkbox">
-                  <div class="flex-grow">
-                      <span class="font-semibold text-slate-700 text-sm" x-text="groupName"></span>
-                      <span class="block text-xs text-slate-400" x-text="`${linkedQuestions[groupName].length} questions linked`"></span>
-                  </div>
-                  <button @click="startFacetedEditing(groupName, null)" class="text-sm text-green-600 hover:underline mr-3">Facet</button>
-                  <button @click="startEditingGroup(groupName)" class="text-sm text-blue-600 hover:underline">Edit</button>
-              </div>
-            </template>
-            <template x-if="filteredManageGroups.length === 0">
-              <p class="text-sm text-slate-400 text-center py-4">No groups match your search.</p>
-            </template>
-        </div>
+            <div class="flex gap-2">
+              <button @click="startLinking(item.representativeQuestion.id)" class="btn btn-primary btn-sm">
+                <span x-text="item.type === 'group' ? 'Edit' : 'Link'"></span>
+              </button>
+            </div>
+          </div>
+        </template>
       </div>
-    
-    
-    <!-- ======================= View: Manage Hidden ======================= -->
-    <!-- MODIFICATION: Changed x-if to x-show to preserve scroll state -->
-    <div x-show="currentView === 'hidden'" class="animate-fade-in">
-          <div class="mb-4">
-            <button @click="currentView = 'list'" class="text-blue-600 hover:underline text-sm">&larr; Back to Tools</button>
-          </div>
-          <h1 class="text-xl font-bold text-slate-800">Hidden Questions</h1>
-          <p class="text-sm text-slate-500 my-3">These questions are manually hidden. Select questions and choose an action.</p>
-          <div class="my-4 flex space-x-2">
-              <button @click="handleUnhideQuestions()" class="btn btn-primary w-full">Unhide Selected</button>
-              <button @click="handleArchiveQuestions()" class="btn btn-secondary w-full">Archive Selected</button>
-          </div>
-          <div class="space-y-2 overflow-y-auto" style="max-height: 60vh;">
-              <template x-for="q in hiddenQuestions" :key="q.id">
-                <div class="group-item flex items-center p-3 bg-white border border-slate-200 rounded-lg">
-                    <input type="checkbox" :data-id="q.id" class="mr-3 h-4 w-4 unhide-checkbox">
-                    <div class="flex-grow">
-                        <span class="font-semibold text-slate-700 text-sm" x-text="q.question"></span>
-                        <span class="block text-xs text-slate-400" x-text="q.sheet"></span>
-                    </div>
-                </div>
-              </template>
-              <template x-if="hiddenQuestions.length === 0">
-                <p class="text-sm text-slate-400 text-center py-4">There are no hidden questions.</p>
-              </template>
-          </div>
-      </div>
-    
-    
-    <!-- ======================= View: Manage Archived ======================= -->
-    <!-- MODIFICATION: Changed x-if to x-show to preserve scroll state -->
-    <div x-show="currentView === 'archive'" class="animate-fade-in">
-          <div class="mb-4">
-            <button @click="currentView = 'list'" class="text-blue-600 hover:underline text-sm">&larr; Back to Tools</button>
-          </div>
-          <h1 class="text-xl font-bold text-slate-800">Archived Questions</h1>
-          <p class="text-sm text-slate-500 my-3">These questions were automatically archived after being combined. You can restore them to the "Hidden" list.</p>
-          <div class="my-4">
-              <button @click="handleUnhideFromArchive()" class="btn btn-primary w-full">Move Selected to Hidden</button>
-          </div>
-          <div class="space-y-2 overflow-y-auto" style="max-height: 60vh;">
-              <template x-for="q in archivedQuestions" :key="q.id">
-                <div class="group-item flex items-center p-3 bg-white border border-slate-200 rounded-lg">
-                    <input type="checkbox" :data-id="q.id" class="mr-3 h-4 w-4 unarchive-checkbox">
-                    <div class="flex-grow">
-                        <span class="font-semibold text-slate-700 text-sm" x-text="q.question"></span>
-                        <span class="block text-xs text-slate-400" x-text="q.sheet"></span>
-                    </div>
-                </div>
-              </template>
-              <template x-if="archivedQuestions.length === 0">
-                <p class="text-sm text-slate-400 text-center py-4">There are no archived questions.</p>
-              </template>
-          </div>
-      </div>
-    
+    </div>
 
     <!-- ======================= View: Linking ======================= -->
-    <!-- MODIFICATION: This is an "action" view, so it remains x-if -->
     <template x-if="currentView === 'linking'">
       <div class="animate-fade-in">
-        <div class="mb-4">
-          <button @click="currentView = 'allQuestions'" class="text-blue-600 hover:underline text-sm">&larr; Back to All Questions</button>
-        </div>
-        <div class="grid grid-cols-2 gap-6 h-linking-view">
-            <!-- Left Panel: Search -->
-            <div class="flex flex-col overflow-hidden">
-                <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg mb-4">
-                    <p class="text-xs text-blue-700 font-semibold">
-                      SOURCE QUESTION (<span x-text="sourceQuestion.sheet"></span>)
-                    </p>
-                    <p class="text-sm text-slate-800" x-text="sourceQuestion.question"></p>
-                    <p x-show="sourceQuestion.previousQuestion" class="text-xs text-blue-600 italic mt-1" x-text="`Context: ${sourceQuestion.previousQuestion}`"></p>
-                </div>
-                <div class="flex-grow flex flex-col overflow-hidden">
-                    <div class="mb-4">
-                        <div class="flex justify-between items-center">
-                            <label class="label">Search All Questions</label>
-                            <button @click="handleClearSelections()" class="text-xs text-blue-600 hover:underline">Uncheck All</button>
-                        </div>
-                        <p class="text-xs text-slate-500 italic mt-1 mb-2">Tip: Hold <kbd class="font-sans px-1 py-0.5 border border-slate-300 rounded bg-slate-100 text-slate-700">Shift</kbd> to select just one question.</p>
-                        <input type="text" x-model="searchTerm" class="input" placeholder="Filter questions by keyword...">
-                    </div>
-                    <div class="overflow-y-auto flex-grow border rounded-md p-2 bg-white">
-                      <!-- Loop over sheets -->
-                      <template x-for="sheetName in Object.keys(sheetsData)" :key="sheetName">
-                        <div class="sheet-container mt-2">
-                           <h3 class="font-bold text-slate-700" x-text="sheetName"></h3>
-                           <div class="mt-2 space-y-2">
-                             <!-- Loop over questions in sheet -->
-                             <template x-for="q in filterQuestionsForLinking(sheetName)" :key="q.id">
-                                <div class="question-match-item flex items-start p-2 rounded-md hover:bg-slate-50">
-                                  <input type="checkbox" :id="q.id" :value="q.id" class="mr-2 mt-1 flex-shrink-0 link-checkbox"
-                                    :checked="pendingSelections.has(q.id)"
-                                    @change="handleCheckboxToggle($event)">
-                                  <div class="flex-grow">
-                                    <label :for="q.id" class="text-sm text-gray-600" x-text="q.question"></label>
-                                    <template x-if="q.previousQuestion">
-                                      <span class="block text-xs text-slate-400 italic" x-text="`Context: ${q.previousQuestion}`"></span>
-                                    </template>
-                                  </div>
-                                  <template x-if="findGroupForQuestion(q.id) && !pendingSelections.has(q.id)">
-                                    <button @click="startEditingGroup(findGroupForQuestion(q.id))" class="text-xs text-blue-600 hover:underline ml-2 whitespace-nowrap">(Edit Group)</button>
-                                  </template>
-                                </div>
-                             </template>
-                           </div>
-                        </div>
-                      </template>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Right Panel: Selections -->
-            <div class="flex flex-col overflow-hidden">
-                <div>
-                    <label class="label">Group Label</label>
-                    <input type="text" class="input mb-4" placeholder="e.g., Overall Satisfaction" 
-                      :value="findGroupForQuestion(sourceQuestion.id) || ''"
-                      @input="currentGroupName = $event.target.value">
-                </div>
-                <div class="flex-grow flex flex-col overflow-hidden">
-                     <div class="flex justify-between items-center mb-2">
-                        <h3 class="font-semibold text-slate-700">Current Group Selections</h3>
-                        <button @click="handleClearSelections()" class="text-xs text-blue-600 hover:underline">Remove All</button>
-                    </div>
-                    <div class="overflow-y-auto flex-grow border rounded-md p-2 bg-white mb-4">
-                      <template x-if="pendingSelectionsInSheets.length === 0">
-                        <p class="text-sm text-slate-400 text-center p-4">No questions selected.</p>
-                      </template>
-                      <template x-for="sheet in pendingSelectionsInSheets" :key="sheet.name">
-                        <div class="mb-1">
-                            <h4 class="font-semibold text-slate-600 text-sm" x-text="sheet.name"></h4>
-                            <div class="mt-1 space-y-0.5">
-                              <template x-for="q in sheet.questions" :key="q.id">
-                                <div class="flex items-start justify-between bg-slate-50 py-0.5 px-2 rounded">
-                                    <div class="flex-grow pr-2">
-                                        <span class="text-sm text-slate-800" x-text="q.question"></span>
-                                        <template x-if="q.previousQuestion">
-                                          <span class="block text-xs text-slate-400 italic" x-text="`Context: ${q.previousQuestion}`"></span>
-                                        </template>
-                                    </div>
-                                    <button @click="handleRemoveSelection(q.id)" class="p-1 text-slate-400 hover:text-red-600 flex-shrink-0">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>
-                                    </button>
-                                </div>
-                              </template>
-                            </div>
-                        </div>
-                      </template>
-                    </div>
-                </div>
-                <div class="space-y-2">
-                    <button @click="handleSave()" class="btn btn-primary w-full">Save Group</button>
-                    <div class="flex items-center space-x-2">
-                        <button @click="handleCombineWithSelection()" class="btn btn-secondary flex-1">Combine Checkbox</button>
-                        <button @click="handleCombineSingleChoice()" class="btn btn-secondary flex-1">Combine Single Choice</button>
-                    </div>
-                    <button @click="handleHideChecked()" class="btn btn-danger w-full">Hide Checked Questions</button>
-                    <template x-if="findGroupForQuestion(sourceQuestion.id)">
-                      <div class="text-center mt-2">
-                        <button @click="handleDeleteGroup($event)" class="text-sm text-red-600 hover:underline">Delete this group</button>
-                      </div>
-                    </template>
-                </div>
-            </div>
-        </div>
-      </div>
-    </template>
-    
-    <!-- ======================= View: Combine Checkbox ======================= -->
-    <!-- MODIFICATION: This is an "action" view, so it remains x-if -->
-    <template x-if="currentView === 'combine'">
-      <div class="animate-fade-in">
-        <div class="mb-4">
-          <button @click="currentView = sourceQuestion ? 'linking' : 'list'" class="text-blue-600 hover:underline text-sm">
-            &larr; Back to <span x-text="sourceQuestion ? 'Linker' : 'Tools'"></span>
-          </button>
-        </div>
-        <h1 class="text-xl font-bold mb-1 text-slate-800">Combine Checkbox Columns</h1>
-        <p class="text-sm text-slate-500 mb-4">Processing sheet: <strong x-text="combineData.sheetName"></strong></p>
-        <div class="space-y-4">
-          <div>
-            <label class="label">1. Select columns & enter replacement text (optional)</label>
-            <p class="text-xs text-slate-400 mb-2">Leave text blank to use the column's existing value.</p>
-            <div class="space-y-2 overflow-y-auto bg-white p-2 border rounded-md" style="max-height: 30vh;">
-              <!-- combineData.headersToDisplay is a getter -->
-              <template x-for="header in combineData.headersToDisplay" :key="header">
-                 <div class="flex items-center p-1 rounded hover:bg-slate-50">
-                   <input type="checkbox" :id="`check-${header.replace(/\\W/g, '_')}`" 
-                     :data-header="header" class="mr-2 h-4 w-4 combine-check"
-                     :checked="combineData.preselectedHeaders"
-                     @change="updateOtherColumnOptions()">
-                   <label :for="`check-${header.replace(/\\W/g, '_')}`" class="text-sm mr-2 flex-grow" x-text="header"></label>
-                   <input type="text" :data-header-for="header" class="input combine-text-input text-sm p-1 w-12" 
-                     placeholder="Text for 'Yes'" :value="header.match(/\[(.*?)\]/) ? header.match(/\[(.*?)\]/)[1].trim() : ''"
-                     :disabled="!combineData.preselectedHeaders && !$el.closest('.flex').querySelector('.combine-check').checked">
-                 </div>
-              </template>
-            </div>
-          </div>
-          <div>
-            <label for="other-column-select" class="label">2. Select 'Other' column (optional)</label>
-            <select id="other-column-select" class="input">
-              <option value="">None</option>
-              <template x-for="header in combineData.otherColumnOptions" :key="header">
-                <option :value="header" x-text="header"></option>
-              </template>
-            </select>
-          </div>
-          <div>
-            <label for="new-column-header" class="label">3. New combined column header</label>
-            <input type="text" id="new-column-header" class="input" placeholder="e.g., Hobbies Combined">
-          </div>
-          <button @click="handleCombine()" class="btn btn-primary w-full">Combine Columns</button>
-        </div>
-      </div>
-    </template>
-    
-    <!-- ======================= View: Facet ======================= -->
-    <!-- MODIFICATION: This is an "action" view, so it remains x-if -->
-    <template x-if="currentView === 'facet'">
-      <div class="animate-fade-in">
-        <div class="mb-4">
-          <!-- 
-            ====================================================================
-            MODIFICATION: Changed @click to call the new handleFacetBack function
-            ====================================================================
-          -->
-          <button @click="handleFacetBack($event)" :disabled="facetData.isLoadingValues" class="text-blue-600 hover:underline text-sm">
-            &larr; Back to <span x-text="facetData.previousViewLabel"></span>
-          </button>
-        </div>
-        <h1 class="text-xl font-bold text-slate-800" x-text="facetData.title"></h1>
-        <p x-show="facetData.groupName" class="text-sm text-slate-500 mt-1">
-          This column is part of the "<span x-text="facetData.groupName"></span>" group. Edits will apply to all columns in the group.
-        </p>
+        <button @click="currentView = 'allQuestions'" class="text-primary hover:underline text-sm mb-4">← Back</button>
         
-        <div class="p-4 bg-white border rounded-lg space-y-4">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center">
-                    <input type="checkbox" id="split-comma-check" class="h-4 w-4 mr-2" 
-                      x-model="facetData.splitByComma" 
-                      @change="handleFacetCheckboxToggle()"
-                      :disabled="facetData.isLoadingValues">
-                    <label for="split-comma-check" class="text-sm" :class="facetData.isLoadingValues ? 'text-slate-400' : ''">Split multi-value cells (by comma)</label>
-                </div>
-                <button @click="handleApplyAllFacetChanges()" class="btn btn-primary" :disabled="Object.keys(facetData.pendingEdits).length === 0 || facetData.isLoadingValues">
-                    Apply <span x-text="Object.keys(facetData.pendingEdits).length"></span> Change(s)
-                </button>
-            </div>
-            <div>
-                 <input type="text" class="input" placeholder="Filter values..." 
-                   x-model="facetData.filterTerm" 
-                   :disabled="facetData.isLoadingValues">
-            </div>
-            <div class="flex items-center space-x-2">
-                <span class="text-sm font-semibold" :class="facetData.isLoadingValues ? 'text-slate-400' : 'text-slate-600'">Sort by:</span>
-                <button @click="facetData.sortBy = 'alphabetical'" class="btn text-sm py-1 px-3"
-                    :class="facetData.sortBy === 'alphabetical' ? 'btn-primary' : 'btn-secondary bg-slate-500 hover:bg-slate-600'"
-                    :disabled="facetData.isLoadingValues">
-                    Alphabetical (A-Z)
-                </button>
-                <button @click="facetData.sortBy = 'count'" class="btn text-sm py-1 px-3"
-                    :class="facetData.sortBy === 'count' ? 'btn-primary' : 'btn-secondary bg-slate-500 hover:bg-slate-600'"
-                    :disabled="!facetData.countsLoaded" 
-                    :title="facetData.countsLoaded ? 'Sort by count' : 'Counts are still loading'">
-                    Count
-                </button>
+        <div class="grid grid-cols-2 gap-4 h-linking-view">
+          <!-- Left: Search & Select -->
+          <div class="flex flex-col overflow-hidden">
+            <div class="card mb-4">
+              <div class="card-body">
+                <div class="text-xs text-secondary">Source Question</div>
+                <div class="font-medium" x-text="sourceQuestion?.question"></div>
+                <div class="text-xs text-secondary" x-text="sourceQuestion?.sheet"></div>
+              </div>
             </div>
             
-            <!-- NEW: Global Actions -->
-            <div class="flex items-center space-x-2">
-                <span class="text-sm font-semibold" :class="facetData.isLoadingValues ? 'text-slate-400' : 'text-slate-600'">Actions:</span>
-                <button @click="handleMassCaseChange('sentence')" class="btn text-sm py-1 px-3 btn-secondary bg-slate-500 hover:bg-slate-600"
-                    :disabled="facetData.isLoadingValues" title="Apply sentence case to all current values">
-                    Sentence Case All
-                </button>
-                <button @click="handleMassCaseChange('capital')" class="btn text-sm py-1 px-3 btn-secondary bg-slate-500 hover:bg-slate-600"
-                    :disabled="facetData.isLoadingValues" title="Apply title case to all current values">
-                    Title Case All
-                </button>
+            <input type="text" x-model="searchTerm" class="input mb-4" placeholder="Filter questions...">
+            
+            <div class="flex-1 overflow-y-auto border rounded-lg p-2 bg-white">
+              <template x-for="sheetName in Object.keys(sheetsData)" :key="sheetName">
+                <div class="mb-4">
+                  <h3 class="font-bold text-sm mb-2" x-text="sheetName"></h3>
+                  <template x-for="q in filterQuestionsForLinking(sheetName)" :key="q.id">
+                    <div class="flex items-start gap-2 p-2 hover:bg-light rounded">
+                      <input type="checkbox" :value="q.id" :checked="pendingSelections.has(q.id)" 
+                             @change="handleCheckboxToggle($event)" class="checkbox mt-1">
+                      <label class="text-sm" x-text="q.question"></label>
+                    </div>
+                  </template>
+                </div>
+              </template>
             </div>
+          </div>
+          
+          <!-- Right: Selections & Actions -->
+          <div class="flex flex-col overflow-hidden">
+            <div class="mb-4">
+              <label class="label">Group Label</label>
+              <input type="text" class="input" placeholder="e.g., Overall Satisfaction"
+                     :value="findGroupForQuestion(sourceQuestion?.id) || ''"
+                     @input="currentGroupName = $event.target.value">
+            </div>
+            
+            <div class="flex-1 overflow-y-auto border rounded-lg p-2 bg-white mb-4">
+              <div class="flex justify-between items-center mb-2">
+                <span class="font-medium">Selected (<span x-text="pendingSelections.size"></span>)</span>
+                <button @click="handleClearSelections()" class="text-xs text-primary hover:underline">Clear All</button>
+              </div>
+              
+              <template x-for="sheet in pendingSelectionsInSheets" :key="sheet.name">
+                <div class="mb-2">
+                  <div class="font-semibold text-sm" x-text="sheet.name"></div>
+                  <template x-for="q in sheet.questions" :key="q.id">
+                    <div class="flex items-center justify-between bg-light p-1 px-2 rounded text-sm">
+                      <span x-text="q.question"></span>
+                      <button @click="handleRemoveSelection(q.id)" class="text-error hover:text-error-hover">×</button>
+                    </div>
+                  </template>
+                </div>
+              </template>
+            </div>
+            
+            <div class="space-y-2">
+              <button @click="handleSave()" class="btn btn-primary w-full">Save Group</button>
+              <div class="flex gap-2">
+                <button @click="handleCombineWithSelection()" class="btn btn-secondary flex-1">Combine Checkbox</button>
+                <button @click="handleCombineSingleChoice()" class="btn btn-secondary flex-1">Combine Single</button>
+              </div>
+              <button @click="handleHideChecked()" class="btn btn-danger w-full">Hide Selected</button>
+            </div>
+          </div>
         </div>
+      </div>
+    </template>
 
-        <div class="mt-4 space-y-2 overflow-y-auto" style="max-height: 50vh;">
+    <!-- ======================= View: Facet List ======================= -->
+    <div x-show="currentView === 'facetList'" class="animate-fade-in">
+      <button @click="currentView = 'list'" class="text-primary hover:underline text-sm mb-4">← Back to Tools</button>
+      
+      <input type="text" x-model="facetListSearchTerm" class="input mb-4" placeholder="Search questions for faceting...">
+      
+      <div class="list overflow-y-auto" style="max-height: 60vh;">
+        <template x-for="item in facetableItems" :key="item.key">
+          <div class="list-item flex items-center justify-between">
+            <div class="flex-1 min-w-0">
+              <span class="font-medium" x-text="item.groupName || item.representativeQuestion.question"></span>
+              <span x-show="item.type === 'group'" class="badge badge-primary ml-2" x-text="item.questionCount"></span>
+            </div>
+            <button @click="startFacetedEditing(item.groupName, item.type === 'single' ? item.representativeQuestion.id : null)" 
+                    class="btn btn-primary btn-sm">Facet</button>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- ======================= View: Facet Editor ======================= -->
+    <template x-if="currentView === 'facet'">
+      <div class="animate-fade-in">
+        <button @click="handleFacetBack($event)" class="text-primary hover:underline text-sm mb-4">
+          ← Back to <span x-text="facetData.previousViewLabel"></span>
+        </button>
+        
+        <h2 class="font-bold text-lg mb-4" x-text="facetData.title"></h2>
+        
+        <div class="flex flex-wrap gap-4 items-center mb-4">
+          <label class="checkbox-label">
+            <input type="checkbox" class="checkbox" x-model="facetData.splitByComma" 
+                   @change="handleFacetCheckboxToggle()" :disabled="facetData.isLoadingValues">
+            <span>Split by comma</span>
+          </label>
+          
+          <input type="text" x-model="facetData.filterTerm" class="input" style="width: 200px;" 
+                 placeholder="Filter values..." :disabled="facetData.isLoadingValues">
+          
+          <button @click="handleApplyAllFacetChanges()" class="btn btn-primary"
+                  :disabled="Object.keys(facetData.pendingEdits).length === 0">
+            Apply <span x-text="Object.keys(facetData.pendingEdits).length"></span> Change(s)
+          </button>
+        </div>
+        
+        <div class="flex gap-2 mb-4">
+          <button @click="facetData.sortBy = 'alphabetical'" class="btn btn-sm"
+                  :class="facetData.sortBy === 'alphabetical' ? 'btn-primary' : 'btn-secondary'">A-Z</button>
+          <button @click="facetData.sortBy = 'count'" class="btn btn-sm"
+                  :class="facetData.sortBy === 'count' ? 'btn-primary' : 'btn-secondary'"
+                  :disabled="!facetData.countsLoaded">Count</button>
+          <span class="border-l mx-2"></span>
+          <button @click="handleMassCaseChange('sentence')" class="btn btn-secondary btn-sm">Sentence All</button>
+          <button @click="handleMassCaseChange('capital')" class="btn btn-secondary btn-sm">Title All</button>
+        </div>
+        
+        <div class="space-y-2 overflow-y-auto" style="max-height: 50vh;">
           <template x-if="facetData.isLoadingValues">
             <div class="flex items-center justify-center p-8">
-              <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-              <span class="ml-3 text-slate-500">Loading unique values...</span>
+              <div class="spinner"></div>
+              <span class="ml-3 text-secondary">Loading...</span>
             </div>
           </template>
           
-          <template x-if="!facetData.isLoadingValues && filteredFacetValues.length === 0">
-            <p class="text-slate-400 text-center p-4" x-text="facetData.values.length > 0 ? 'No values match your filter.' : 'No values found.'"></p>
-          </template>
-
           <template x-for="item in filteredFacetValues" :key="item.text">
-            <div class="facet-item p-2.5 bg-white border rounded-lg flex items-center space-x-3"
-                 :class="facetData.pendingEdits.hasOwnProperty(item.text) ? 'border-blue-400 bg-blue-50' : 'border-slate-200'"
+            <div class="facet-item card"
+                 :class="facetData.pendingEdits.hasOwnProperty(item.text) ? 'border-primary bg-primary-light' : ''"
                  :data-original-value="item.text"
                  @dragover.prevent="$el.classList.add('drag-over-target')"
                  @dragleave="$el.classList.remove('drag-over-target')"
                  @drop="handleFacetDrop($event, item.text)">
+              <div class="card-body flex items-center gap-3 p-3">
+                <span class="cursor-move text-secondary" draggable="true"
+                      @dragstart="handleFacetDragStart($event, item.text)"
+                      @dragend="$el.closest('.facet-item').classList.remove('is-dragging')">⋮⋮</span>
                 
-                <span class="facet-drag-handle cursor-move text-slate-400 hover:text-slate-600 p-1" draggable="true" 
-                  @dragstart="handleFacetDragStart($event, item.text)"
-                  @dragend="$event.target.closest('.facet-item').classList.remove('is-dragging'); document.querySelectorAll('.drag-over-target').forEach(el => el.classList.remove('drag-over-target'))"
-                  title="Drag to combine with another value">
-                    <span class="text-lg leading-none select-none" style="margin-top: -2px;">&#8942;</span>
-                </span>
-
-                <span class="text-sm text-slate-500 font-mono w-8 text-right">
-                  <!-- OPTIMIZATION 1: We no longer have a "loading" state for counts -->
-                  <template x-if="item.count !== null">
-                    <span x-text="item.count"></span>
+                <span class="text-sm text-secondary w-12 text-right" x-text="item.count"></span>
+                
+                <input type="text" class="input flex-1"
+                       :value="facetData.pendingEdits.hasOwnProperty(item.text) ? facetData.pendingEdits[item.text] : item.text"
+                       @change="handleDirectEdit(item.text, $event.target.value)"
+                       spellcheck="true">
+                
+                <div class="flex gap-1">
+                  <button @click="handleCaseChange(item.text, 'upper')" class="btn btn-outline btn-sm">AA</button>
+                  <button @click="handleCaseChange(item.text, 'sentence')" class="btn btn-outline btn-sm">Aa</button>
+                  <button @click="handleCaseChange(item.text, 'capital')" class="btn btn-outline btn-sm">Aa Aa</button>
+                  <button @click="handleDirectEdit(item.text, '')" class="btn btn-outline btn-sm text-error">×</button>
+                  <template x-if="facetData.pendingEdits.hasOwnProperty(item.text)">
+                    <button @click="handleRevertEdit(item.text)" class="btn btn-outline btn-sm">↺</button>
                   </template>
-                </span>
-                
-                <!-- MODIFIED: Wrapped input in a flex container to add delete button -->
-                <div class="flex-grow">
-                    <div class="flex items-center space-x-1">
-                        <!-- Added spellcheck="true" from previous request -->
-                        <input type="text" :value="facetData.pendingEdits.hasOwnProperty(item.text) ? facetData.pendingEdits[item.text] : item.text" 
-                               :data-original-value="item.text"
-                               :size="Math.max(15, (facetData.pendingEdits.hasOwnProperty(item.text) ? facetData.pendingEdits[item.text] : item.text).length)"
-                               class="facet-edit-input input text-sm p-1 border rounded w-auto"
-                               :class="facetData.pendingEdits.hasOwnProperty(item.text) ? 'font-semibold' : ''"
-                               @change="handleDirectEdit(item.text, $event.target.value)"
-                               spellcheck="true">
-                        
-                        <!-- NEW: Delete button -->
-                        <button @click="handleDirectEdit(item.text, '')" title="Delete text (set to empty)" class="p-1 rounded hover:bg-red-200 text-red-500">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                              <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
-                            </svg>
-                        </button>
-                    </div>
                 </div>
-
-                <div class="flex items-center space-x-1">
-                    <button @click="handleCaseChange(item.text, 'upper')" title="UPPER CASE" class="case-change-btn p-1.5 rounded hover:bg-slate-200 text-slate-600 font-bold">AA</button>
-                    <button @click="handleCaseChange(item.text, 'sentence')" title="Sentence case" class="case-change-btn p-1.5 rounded hover:bg-slate-200 text-slate-600">Aa</button>
-                    <button @click="handleCaseChange(item.text, 'capital')" title="Capital Case" class="case-change-btn p-1.5 rounded hover:bg-slate-200 text-slate-600 font-semibold">Aa Aa</button>
-                    <template x-if="facetData.pendingEdits.hasOwnProperty(item.text)">
-                      <button @click="handleRevertEdit(item.text)" title="Revert change" class="revert-btn p-1.5 rounded hover:bg-red-200 text-red-600">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0 .908.417A4 4 0 1 0 8 4v3.5a.5.5 0 0 0 1 0V4z"/></svg>
-                      </button>
-                    </template>
-                </div>
+              </div>
             </div>
           </template>
         </div>
       </div>
     </template>
 
+    <!-- ======================= View: Manage Groups ======================= -->
+    <div x-show="currentView === 'manage'" class="animate-fade-in">
+      <button @click="currentView = 'list'" class="text-primary hover:underline text-sm mb-4">← Back to Tools</button>
+      
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="font-bold text-lg">Manage Groups (<span x-text="Object.keys(linkedQuestions).length"></span>)</h2>
+        <button @click="handleForceResync()" class="btn btn-secondary btn-sm">Re-sync</button>
+      </div>
+      
+      <input type="text" x-model="manageSearchTerm" class="input mb-4" placeholder="Search groups...">
+      
+      <div class="list overflow-y-auto" style="max-height: 50vh;">
+        <template x-for="group in filteredManageGroups" :key="group">
+          <div class="list-item flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <input type="checkbox" class="checkbox unlink-checkbox" :data-group="group">
+              <span class="font-medium" x-text="group"></span>
+              <span class="badge badge-primary" x-text="linkedQuestions[group]?.length || 0"></span>
+            </div>
+            <button @click="startEditingGroup(group)" class="btn btn-secondary btn-sm">Edit</button>
+          </div>
+        </template>
+      </div>
+      
+      <div class="flex gap-2 mt-4">
+        <button @click="handleMassUnlink($event)" class="btn btn-danger">Unlink Selected</button>
+        <button @click="handleUnlinkAll($event)" class="btn btn-danger">Unlink All</button>
+      </div>
+    </div>
 
-    <!-- ======================= Global Loader & Toast ======================= -->
-    
-    <!-- LOADER: x-show="isLoading" makes this appear when state.isLoading is true -->
-    <div id="loader" x-show="isLoading" class="fixed inset-0 bg-white bg-opacity-75 flex flex-col items-center justify-center">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-      <p id="loader-message" x-text="loaderMessage" class="mt-4 text-sm font-medium text-slate-600"></p>
+    <!-- ======================= View: Hidden Questions ======================= -->
+    <div x-show="currentView === 'hidden'" class="animate-fade-in">
+      <button @click="currentView = 'list'" class="text-primary hover:underline text-sm mb-4">← Back to Tools</button>
+      
+      <h2 class="font-bold text-lg mb-4">Hidden Questions (<span x-text="hiddenQuestionIds.size"></span>)</h2>
+      
+      <div class="list overflow-y-auto mb-4" style="max-height: 50vh;">
+        <template x-for="q in hiddenQuestions" :key="q.id">
+          <div class="list-item flex items-center gap-2">
+            <input type="checkbox" class="checkbox unhide-checkbox" :data-id="q.id">
+            <span x-text="q.question"></span>
+            <span class="text-xs text-secondary" x-text="q.sheet"></span>
+          </div>
+        </template>
+        <template x-if="hiddenQuestions.length === 0">
+          <div class="text-center p-4 text-secondary">No hidden questions</div>
+        </template>
+      </div>
+      
+      <div class="flex gap-2">
+        <button @click="handleUnhideQuestions()" class="btn btn-primary">Unhide Selected</button>
+        <button @click="handleArchiveQuestions()" class="btn btn-danger">Archive Selected</button>
+      </div>
+    </div>
+
+    <!-- ======================= View: Archived Questions ======================= -->
+    <div x-show="currentView === 'archived'" class="animate-fade-in">
+      <button @click="currentView = 'list'" class="text-primary hover:underline text-sm mb-4">← Back to Tools</button>
+      
+      <h2 class="font-bold text-lg mb-4">Archived Questions (<span x-text="archivedQuestionIds.size"></span>)</h2>
+      
+      <div class="list overflow-y-auto mb-4" style="max-height: 50vh;">
+        <template x-for="q in archivedQuestions" :key="q.id">
+          <div class="list-item flex items-center gap-2">
+            <input type="checkbox" class="checkbox unarchive-checkbox" :data-id="q.id">
+            <span x-text="q.question"></span>
+            <span class="text-xs text-secondary" x-text="q.sheet"></span>
+          </div>
+        </template>
+        <template x-if="archivedQuestions.length === 0">
+          <div class="text-center p-4 text-secondary">No archived questions</div>
+        </template>
+      </div>
+      
+      <button @click="handleUnhideFromArchive()" class="btn btn-primary">Move to Hidden</button>
+    </div>
+
+    <!-- ======================= Loader & Toast ======================= -->
+    <div x-show="isLoading" class="loader-overlay">
+      <div class="spinner"></div>
+      <p class="loader-message" x-text="loaderMessage"></p>
     </div>
     
-    <!-- TOAST: x-show="toast.show" and x-text="toast.message" -->
-    <div id="toast" x-show="toast.show" 
-         :class="toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'"
-         class="fixed bottom-4 right-4 text-white py-2 px-4 rounded-lg shadow-md">
-      <p id="toast-message" x-text="toast.message"></p>
+    <div x-show="toast.show" class="toast" :class="toast.type === 'success' ? 'toast-success' : 'toast-error'">
+      <span x-text="toast.message"></span>
     </div>
   </div>
+
+  <!-- Include the Sidebar app logic -->
+  <?!= HtmlService.createHtmlOutputFromFile('SidebarApp').getContent(); ?>
 </body>
 </html>
-

@@ -1,0 +1,2017 @@
+<!-- QuestionConfigApp.html - Full Alpine.js application logic -->
+<!--
+  TERMINOLOGY GUIDE:
+  ==================
+  1. COLOR GROUPS (colorGroup, colorGroupEmojis):
+     - Emoji-based categories (🔴🟡🟢🔵🟣🟤⚫⚪🔶🟠) for organizing questions by chart configuration
+     - Stored in column K of the Question Configuration sheet
+     - Used to filter/batch questions that share similar chart settings
+     - Each question can have ONE color group assigned
+  
+  2. LINKED QUESTIONS (questionLinks):
+     - Groups of related questions across different survey years
+     - Stored in backend/document properties
+     - Used for visualizing year-over-year comparisons of the same question
+     - Questions are linked when they ask the same thing but may have slight wording changes
+     - Displayed in the "Linked Questions" tab for bulk configuration
+  
+  3. TEMPORARY ASSIGNMENT GROUPS (tempColorGroupAssignments, tempColorGroupConfigs):
+     - In the Linked Questions modal, questions are temporarily assigned to color group "buckets"
+     - This allows batch-configuring multiple questions with the same settings
+     - The assigned emoji becomes the question's colorGroup when saved
+-->
+<script>
+  function questionConfigApp() {
+    return {
+      // === STATE ===
+      questions: [],
+      questionLinks: {},  // Linked Questions: groups of related questions across survey years (from backend)
+      currentConfig: {},  // Current chart configurations for all questions
+      isLoading: true,
+      messages: [],
+      
+      // Tabs
+      currentTab: 'individual',
+      searchTerm: '',
+      linkedQuestionsSearchTerm: '',  // Search within Linked Questions tab
+      configStatusFilter: '',  // Filter Individual Questions by configuration status
+      yearFilter: '',  // Filter Individual Questions by survey year
+      
+      // Individual question modal
+      showConfigModal: false,
+      editingQuestion: null,
+      editingConfig: {},
+      answerOptions: [],
+      loadingAnswers: false,
+      
+      // Linked Questions modal state
+      showLinkedQuestionsModal: false,
+      editingLinkedGroupName: '',  // Name of the linked question group being edited
+      currentLinkedQuestions: [],  // Question IDs in the current linked group
+      currentLinkedGroupIndex: 0,
+      allLinkedGroupNames: [],
+      
+      // Reconcile mode - helps identify config mismatches between questions that should be the same
+      reconcileMode: false,
+      reconcileConfigs: {},  // Maps questionId -> editable config for reconcile mode
+      configSignatures: {},  // Maps questionId -> config signature string for comparison
+      
+      // Temporary Color Group assignments within Linked Questions modal
+      // Maps questionId -> color group emoji for batch configuration
+      tempColorGroupAssignments: {},
+      // Config settings for each color group in the modal
+      tempColorGroupConfigs: {},
+      
+      // Color Group emojis - used for categorizing questions by chart configuration
+      colorGroupEmojis: ['🔴', '🟡', '🟢', '🔵', '🟣', '🟤', '⚫', '⚪', '🔶', '🟠'],
+      
+      // Group preview (in Linked Questions modal)
+      previewQuestionId: '',
+      linkedQuestionPreviewAnswers: [],
+      loadingLinkedPreview: false,
+      previewNavigationTimer: null,
+      answerOptionsCache: {},
+      
+      // Comparison (for Linked Questions)
+      commonAnswers: [],
+      comparisonData: null,
+      comparisonLoading: false,
+      comparisonCollapsed: false,
+      comparisonRequestId: 0,
+      
+      // Custom order
+      customOrderChecked: {},
+      customOrderCounts: {},
+      customOrderToggleState: {},
+      
+      // Drag and drop state
+      dragState: {
+        dragging: false,
+        dragIndex: null,
+        dragOverIndex: null,
+        context: null  // 'individual_desktop', 'individual_mobile', or '{emoji}_desktop', '{emoji}_mobile'
+      },
+      
+      // Faceting
+      showFacetModal: false,
+      facetValues: [],
+      facetPendingEdits: {},
+      facetSearchTerm: '',
+      facetSplitByComma: false,
+      facetSortBy: 'alphabetical',
+      facetOriginalValues: {},
+      loadingFacetValues: false,
+      
+      // Constants
+      questionTypes: [
+        'Yes No N/A', 'Numerical input', 'Numerical (Pre-binned)', 
+        'Multiple Choice (Numerical)', 'Multiple Choice', 'Text input',
+        'Height', '1-5 Scale', 'Country', 'State/Province', 'Array (comma-separated)'
+      ],
+      
+      chartCompatibility: {
+        'Yes No N/A': ['table', 'bar', 'column', 'pie', 'doughnut'],
+        'Numerical input': ['table', 'histogram', 'box', 'line', 'area'],
+        'Numerical (Pre-binned)': ['table', 'bar', 'column', 'histogram', 'line', 'area'],
+        'Multiple Choice (Numerical)': ['table', 'bar', 'column', 'line', 'area', 'radar'],
+        'Multiple Choice': ['table', 'bar', 'column', 'pie', 'doughnut', 'radar', 'polarArea'],
+        'Text input': ['table', 'word_cloud', 'bar'],
+        'Height': ['table', 'histogram', 'bar', 'column'],
+        '1-5 Scale': ['table', 'bar', 'column', 'radar', 'polarArea'],
+        'Country': ['table', 'country_map', 'bar', 'column'],
+        'State/Province': ['table', 'state_map', 'bar', 'column'],
+        'Array (comma-separated)': ['table', 'chord', 'bar', 'word_cloud']
+      },
+
+      // === COMPUTED ===
+      
+      /**
+       * Extract year from question ID (e.g., "Q1_2023" -> "2023", "2024_Q5" -> "2024")
+       */
+      getYearFromQuestionId(questionId) {
+        const match = questionId.match(/\b(20\d{2})\b/);
+        return match ? match[1] : null;
+      },
+      
+      /**
+       * Get list of unique years from all question IDs
+       */
+      get availableYears() {
+        const years = new Set();
+        this.questions.forEach(q => {
+          const year = this.getYearFromQuestionId(q.questionId);
+          if (year) years.add(year);
+        });
+        return Array.from(years).sort().reverse();
+      },
+      
+      /**
+       * Filtered list of questions for the Individual Questions tab
+       * Filters by search term, configuration status, and year
+       */
+      get filteredQuestions() {
+        let filtered = this.searchTerm ? 
+          this.questions.filter(q => 
+            q.questionId.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
+            q.questionText.toLowerCase().includes(this.searchTerm.toLowerCase())
+          ) : [...this.questions];
+        
+        // Filter by configuration status
+        if (this.configStatusFilter === 'configured') {
+          filtered = filtered.filter(q => this.isConfigured(q.questionId));
+        } else if (this.configStatusFilter === 'unconfigured') {
+          filtered = filtered.filter(q => !this.isConfigured(q.questionId));
+        }
+        
+        // Filter by year
+        if (this.yearFilter) {
+          filtered = filtered.filter(q => this.getYearFromQuestionId(q.questionId) === this.yearFilter);
+        }
+        
+        // Sort: unconfigured first
+        return filtered.sort((a, b) => {
+          const aConfigured = this.isConfigured(a.questionId);
+          const bConfigured = this.isConfigured(b.questionId);
+          if (aConfigured === bConfigured) return 0;
+          return aConfigured ? 1 : -1;
+        });
+      },
+      
+      /**
+       * List of Linked Question groups (questions related across survey years)
+       */
+      get linkedQuestionGroups() {
+        return Object.entries(this.questionLinks).map(([name, questionIds]) => ({
+          name,
+          questionIds
+        }));
+      },
+      
+      /**
+       * Filtered list of Linked Question groups
+       */
+      get filteredLinkedGroups() {
+        let filtered = this.linkedQuestionsSearchTerm ? 
+          this.linkedQuestionGroups.filter(g => g.name.toLowerCase().includes(this.linkedQuestionsSearchTerm.toLowerCase())) :
+          [...this.linkedQuestionGroups];
+        
+        return filtered.sort((a, b) => {
+          const aConfigured = this.isLinkedGroupConfigured(a.name);
+          const bConfigured = this.isLinkedGroupConfigured(b.name);
+          if (aConfigured === bConfigured) return 0;
+          return aConfigured ? 1 : -1;
+        });
+      },
+      
+      get availableCharts() {
+        if (!this.editingConfig.questionType) return [];
+        return this.chartCompatibility[this.editingConfig.questionType] || [];
+      },
+
+      /**
+       * Get list of color groups that have questions assigned in the current Linked Questions modal
+       */
+      get activeColorGroupsInModal() {
+        const used = new Set();
+        this.currentLinkedQuestions.forEach(qId => {
+          const emoji = this.tempColorGroupAssignments[qId];
+          if (emoji) used.add(emoji);
+        });
+        return Array.from(used).sort((a, b) => 
+          this.colorGroupEmojis.indexOf(a) - this.colorGroupEmojis.indexOf(b)
+        );
+      },
+      
+      get filteredFacetValues() {
+        if (!this.facetSearchTerm) return this.facetValues;
+        const term = this.facetSearchTerm.toLowerCase();
+        return this.facetValues.filter(v => {
+          const currentValue = this.facetPendingEdits[v.value] !== undefined ? 
+            this.facetPendingEdits[v.value] : v.value;
+          return currentValue.toLowerCase().includes(term);
+        });
+      },
+      
+      // === INITIALIZATION ===
+      
+      async init() {
+        try {
+          const data = await server.getQuestionConfigData();
+          this.questions = data.questions || [];
+          this.questionLinks = data.links || {};  // Linked Questions from backend
+          this.currentConfig = data.config || {};  // Includes colorGroup from column K
+          this.isLoading = false;
+        } catch (err) {
+          this.showMessage('error', 'Failed to load data: ' + err);
+          this.isLoading = false;
+        }
+      },
+      
+      // === HELPER METHODS ===
+      
+      // Toggle button text based on state (cycles: Uncheck All → Check All → Check 5+)
+      getToggleButtonText(key) {
+        const state = this.customOrderToggleState[key] || 0;
+        switch(state) {
+          case 0: return 'Uncheck All';
+          case 1: return 'Check All';
+          case 2: return 'Check 5+';
+          default: return 'Toggle';
+        }
+      },
+      
+      isConfigured(questionId) {
+        const cfg = this.currentConfig[questionId];
+        return cfg && cfg.questionType && cfg.chartType;
+      },
+      
+      /**
+       * Get count of questions assigned to a specific color group
+       * @param {string} emoji - The color group emoji, or 'none' for unassigned
+       */
+      getColorGroupCount(emoji) {
+        if (emoji === 'none') {
+          return this.questions.filter(q => !this.currentConfig[q.questionId]?.colorGroup).length;
+        }
+        return this.questions.filter(q => this.currentConfig[q.questionId]?.colorGroup === emoji).length;
+      },
+      
+      /**
+       * Check if all questions in a Linked Question group are configured
+       */
+      isLinkedGroupConfigured(groupName) {
+        const qIds = this.questionLinks[groupName] || [];
+        if (qIds.length === 0) return false;
+        return qIds.every(qId => this.isConfigured(qId));
+      },
+      
+      /**
+       * Get configuration status text for a Linked Question group
+       */
+      getLinkedGroupStatus(groupName) {
+        const qIds = this.questionLinks[groupName] || [];
+        if (qIds.length === 0) return 'No questions';
+        const configured = qIds.filter(qId => this.isConfigured(qId)).length;
+        if (configured === 0) return 'Unconfigured';
+        if (configured === qIds.length) return 'Configured';
+        return `${configured}/${qIds.length} configured`;
+      },
+      
+      getQuestionText(questionId) {
+        const q = this.questions.find(q => q.questionId === questionId);
+        return q ? q.questionText : '';
+      },
+      
+      findNextUnconfiguredQuestion() {
+        const currentIndex = this.filteredQuestions.findIndex(q => q.questionId === this.editingQuestion?.questionId);
+        if (currentIndex === -1) return null;
+        
+        for (let i = currentIndex + 1; i < this.filteredQuestions.length; i++) {
+          if (!this.isConfigured(this.filteredQuestions[i].questionId)) {
+            return this.filteredQuestions[i];
+          }
+        }
+        return null;
+      },
+      
+      hasNextUnconfiguredQuestion() {
+        return this.findNextUnconfiguredQuestion() !== null;
+      },
+      
+      getDefaultConfigForType(questionType) {
+        const defaults = {
+          'Yes No N/A': { chartType: 'pie', sortType: 'none' },
+          'State/Province': { chartType: 'state_map', sortType: 'none' },
+          'Numerical input': { chartType: 'histogram', sortType: 'ordinal' },
+          'Numerical (Pre-binned)': { chartType: 'histogram', sortType: 'ordinal' },
+          'Multiple Choice (Numerical)': { chartType: 'column', sortType: 'ordinal' },
+          'Multiple Choice': { chartType: 'bar', sortType: 'none' },
+          '1-5 Scale': { chartType: 'column', sortType: 'ordinal' },
+          'Text input': { chartType: 'word_cloud', sortType: 'none' },
+          'Height': { chartType: 'histogram', sortType: 'height' },
+          'Country': { chartType: 'country_map', sortType: 'none' },
+          'Array (comma-separated)': { chartType: 'chord', mobileChartType: 'bar', sortType: 'custom' }
+        };
+        return defaults[questionType] || { chartType: '', sortType: 'none' };
+      },
+
+      // === INDIVIDUAL QUESTION MODAL ===
+      
+      async openConfigModal(questionId) {
+        this.editingQuestion = this.questions.find(q => q.questionId === questionId);
+        if (!this.editingQuestion) return;
+        
+        this.editingConfig = this.currentConfig[questionId] ? 
+          JSON.parse(JSON.stringify(this.currentConfig[questionId])) :
+          {
+            questionType: '', chartType: '', mobileChartType: '', 
+            hasOther: false, sortType: 'none', sortTypeMobile: '',
+            customOrder: '', customOrderMobile: '', colorGroup: ''
+          };
+        
+        this.showConfigModal = true;
+        this.loadAnswerOptions(questionId);
+      },
+      
+      async loadAnswerOptions(questionId) {
+        this.loadingAnswers = true;
+        this.answerOptions = [];
+        
+        try {
+          const options = await server.getAnswerOptions(questionId);
+          this.answerOptions = options;
+        } catch (err) {
+          if (err.message && err.message.includes('429')) {
+            this.showMessage('error', 'Rate limit reached. Please wait and try again.');
+          } else {
+            this.showMessage('error', 'Failed to load answers: ' + err);
+          }
+        }
+        
+        this.loadingAnswers = false;
+      },
+
+      onQuestionTypeChange() {
+        const available = this.availableCharts;
+        const defaults = this.getDefaultConfigForType(this.editingConfig.questionType);
+        
+        if (defaults.chartType && available.includes(defaults.chartType)) {
+          this.editingConfig.chartType = defaults.chartType;
+        } else if (!available.includes(this.editingConfig.chartType)) {
+          this.editingConfig.chartType = '';
+        }
+        
+        if (defaults.sortType) {
+          this.editingConfig.sortType = defaults.sortType;
+        }
+        
+        if (this.editingConfig.mobileChartType && !available.includes(this.editingConfig.mobileChartType)) {
+          this.editingConfig.mobileChartType = '';
+        }
+      },
+      
+      async onSortTypeChange(platform) {
+        if (platform === 'desktop') {
+          if (this.editingConfig.sortType === 'custom') {
+            // Auto-load answers when custom is selected
+            await this.loadAnswersToIndividualCustomOrder('desktop');
+          } else {
+            this.editingConfig.customOrder = '';
+            // Clear checked states for this context
+            delete this.customOrderChecked['individual_desktop'];
+            delete this.customOrderToggleState['individual_desktop'];
+          }
+        }
+        if (platform === 'mobile') {
+          if (this.editingConfig.sortTypeMobile === 'custom') {
+            // Auto-load answers when custom is selected
+            await this.loadAnswersToIndividualCustomOrder('mobile');
+          } else {
+            this.editingConfig.customOrderMobile = '';
+            // Clear checked states for this context
+            delete this.customOrderChecked['individual_mobile'];
+            delete this.customOrderToggleState['individual_mobile'];
+          }
+        }
+      },
+      
+      // Individual question custom order methods
+      
+      getIndividualCustomOrderItemsWithMeta(platform) {
+        const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
+        const orderString = this.editingConfig[field];
+        if (!orderString) return [];
+        
+        const items = orderString.split(',').map(s => s.trim()).filter(Boolean);
+        const key = `individual_${platform}`;
+        
+        // Initialize checked states if not exists
+        if (!this.customOrderChecked[key]) {
+          this.customOrderChecked[key] = {};
+          items.forEach(item => {
+            this.customOrderChecked[key][item] = true; // Default to checked
+          });
+        }
+        
+        return items.map(value => ({
+          value: value,
+          checked: this.customOrderChecked[key][value] !== false,
+          count: this.customOrderCounts[value]
+        }));
+      },
+      
+      toggleIndividualCheckboxes(platform) {
+        const key = `individual_${platform}`;
+        const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
+        const items = (this.editingConfig[field] || '').split(',').map(s => s.trim()).filter(Boolean);
+        
+        if (items.length === 0) return;
+        
+        // Initialize state if needed
+        if (this.customOrderToggleState[key] === undefined) {
+          this.customOrderToggleState[key] = 0;
+        }
+        
+        // Cycle through states: 0 (uncheck) → 1 (check all) → 2 (check 5+) → 0...
+        this.customOrderToggleState[key] = (this.customOrderToggleState[key] + 1) % 3;
+        const state = this.customOrderToggleState[key];
+        
+        if (!this.customOrderChecked[key]) {
+          this.customOrderChecked[key] = {};
+        }
+        
+        items.forEach(item => {
+          if (state === 0) {
+            this.customOrderChecked[key][item] = false;
+          } else if (state === 1) {
+            this.customOrderChecked[key][item] = true;
+          } else if (state === 2) {
+            const count = this.customOrderCounts[item] || 0;
+            this.customOrderChecked[key][item] = count >= 5;
+          }
+        });
+      },
+      
+      toggleIndividualCustomOrderItem(platform, index) {
+        const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
+        const items = (this.editingConfig[field] || '').split(',').map(s => s.trim()).filter(Boolean);
+        const key = `individual_${platform}`;
+        
+        if (index >= 0 && index < items.length) {
+          const item = items[index];
+          if (!this.customOrderChecked[key]) {
+            this.customOrderChecked[key] = {};
+          }
+          this.customOrderChecked[key][item] = !this.customOrderChecked[key][item];
+        }
+      },
+      
+      moveIndividualCustomOrderItem(platform, index, direction) {
+        const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
+        const items = (this.editingConfig[field] || '').split(',').map(s => s.trim()).filter(Boolean);
+        
+        if (items.length === 0) return;
+        
+        let newIndex = index;
+        if (direction === 'up') newIndex = Math.max(0, index - 1);
+        else if (direction === 'down') newIndex = Math.min(items.length - 1, index + 1);
+        else if (direction === 'top') newIndex = 0;
+        else if (direction === 'bottom') newIndex = items.length - 1;
+        
+        if (newIndex !== index) {
+          const [item] = items.splice(index, 1);
+          items.splice(newIndex, 0, item);
+          this.editingConfig[field] = items.join(', ');
+        }
+      },
+      
+      // === DRAG AND DROP HANDLERS ===
+      
+      handleDragStart(event, index, context) {
+        this.dragState.dragging = true;
+        this.dragState.dragIndex = index;
+        this.dragState.context = context;
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', index.toString());
+      },
+      
+      handleDragEnd(event) {
+        this.dragState.dragging = false;
+        this.dragState.dragIndex = null;
+        this.dragState.dragOverIndex = null;
+        this.dragState.context = null;
+        // Clean up any lingering drag-over classes
+        document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+      },
+      
+      handleDragOver(event, index, context) {
+        if (this.dragState.context !== context) return;
+        event.preventDefault();
+        this.dragState.dragOverIndex = index;
+      },
+      
+      handleDragLeave(event) {
+        // Only clear if we're actually leaving the element
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          this.dragState.dragOverIndex = null;
+        }
+      },
+      
+      handleDrop(event, targetIndex, context) {
+        event.preventDefault();
+        
+        if (this.dragState.context !== context) return;
+        
+        const sourceIndex = this.dragState.dragIndex;
+        if (sourceIndex === null || sourceIndex === targetIndex) {
+          this.handleDragEnd(event);
+          return;
+        }
+        
+        // Determine which data structure to modify based on context
+        if (context.startsWith('individual_')) {
+          const platform = context.replace('individual_', '');
+          this.reorderIndividualCustomOrder(platform, sourceIndex, targetIndex);
+        } else {
+          // Group context: "{emoji}_{platform}"
+          const lastUnderscore = context.lastIndexOf('_');
+          const emoji = context.substring(0, lastUnderscore);
+          const platform = context.substring(lastUnderscore + 1);
+          this.reorderGroupCustomOrder(emoji, platform, sourceIndex, targetIndex);
+        }
+        
+        this.handleDragEnd(event);
+      },
+      
+      reorderIndividualCustomOrder(platform, sourceIndex, targetIndex) {
+        const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
+        const items = (this.editingConfig[field] || '').split(',').map(s => s.trim()).filter(Boolean);
+        
+        if (sourceIndex < 0 || sourceIndex >= items.length) return;
+        if (targetIndex < 0 || targetIndex >= items.length) return;
+        
+        const [movedItem] = items.splice(sourceIndex, 1);
+        items.splice(targetIndex, 0, movedItem);
+        this.editingConfig[field] = items.join(', ');
+      },
+      
+      reorderGroupCustomOrder(emoji, platform, sourceIndex, targetIndex) {
+        const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
+        if (!this.tempColorGroupConfigs[emoji]) return;
+        
+        const items = (this.tempColorGroupConfigs[emoji][field] || '').split(',').map(s => s.trim()).filter(Boolean);
+        
+        if (sourceIndex < 0 || sourceIndex >= items.length) return;
+        if (targetIndex < 0 || targetIndex >= items.length) return;
+        
+        const [movedItem] = items.splice(sourceIndex, 1);
+        items.splice(targetIndex, 0, movedItem);
+        this.tempColorGroupConfigs[emoji][field] = items.join(', ');
+      },
+      
+      async loadAnswersToIndividualCustomOrder(platform) {
+        if (!this.editingQuestion || !this.editingQuestion.questionId) {
+          this.showMessage('error', 'No question selected');
+          return;
+        }
+        
+        this.loadingAnswers = true;
+        
+        try {
+          const options = await server.getAnswerOptions(this.editingQuestion.questionId);
+          const answerCounts = {};
+          
+          options.forEach(opt => {
+            answerCounts[opt.value] = opt.count;
+          });
+          
+          // Store counts
+          this.customOrderCounts = { ...this.customOrderCounts, ...answerCounts };
+          
+          // Sort by frequency (descending)
+          const sortedAnswers = options
+            .sort((a, b) => b.count - a.count)
+            .map(opt => opt.value);
+          
+          // Update the custom order field
+          const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
+          this.editingConfig[field] = sortedAnswers.join(', ');
+          
+          // Initialize checkboxes: check only items with 5+ replies
+          const key = `individual_${platform}`;
+          this.customOrderChecked[key] = {};
+          this.customOrderToggleState[key] = 2; // Set to "Check 5+" state
+          
+          sortedAnswers.forEach(answer => {
+            const count = answerCounts[answer] || 0;
+            this.customOrderChecked[key][answer] = count >= 5;
+          });
+          
+          const checkedCount = sortedAnswers.filter(a => answerCounts[a] >= 5).length;
+          this.showMessage('success', `Loaded ${sortedAnswers.length} answers (${checkedCount} with 5+ replies checked)`);
+        } catch (err) {
+          this.showMessage('error', 'Failed to load answers: ' + err.message);
+        } finally {
+          this.loadingAnswers = false;
+        }
+      },
+      
+      closeModal() {
+        this.showConfigModal = false;
+        this.editingQuestion = null;
+        this.editingConfig = {};
+        this.answerOptions = [];
+        // Clear individual modal's custom order state
+        delete this.customOrderChecked['individual_desktop'];
+        delete this.customOrderChecked['individual_mobile'];
+        delete this.customOrderToggleState['individual_desktop'];
+        delete this.customOrderToggleState['individual_mobile'];
+        // Reset drag state
+        this.dragState = { dragging: false, dragIndex: null, dragOverIndex: null, context: null };
+      },
+      
+      closeModalIfBackdrop(e) {
+        if (e.target.classList.contains('modal-overlay')) {
+          this.closeModal();
+        }
+      },
+      
+      async saveConfig() {
+        if (!this.editingQuestion) return;
+        
+        if (!this.editingConfig.questionType || !this.editingConfig.chartType) {
+          this.showMessage('error', 'Please select both question type and chart type');
+          return;
+        }
+        
+        // Create a copy to filter unchecked items
+        const configToSave = { ...this.editingConfig };
+        
+        // Filter custom order to only include checked items (desktop)
+        if (configToSave.sortType === 'custom' && configToSave.customOrder) {
+          const desktopKey = 'individual_desktop';
+          if (this.customOrderChecked[desktopKey]) {
+            const items = configToSave.customOrder.split(',').map(s => s.trim()).filter(Boolean);
+            const checkedItems = items.filter(item => this.customOrderChecked[desktopKey][item] !== false);
+            configToSave.customOrder = checkedItems.join(', ');
+          }
+        }
+        
+        // Filter custom order to only include checked items (mobile)
+        if (configToSave.sortTypeMobile === 'custom' && configToSave.customOrderMobile) {
+          const mobileKey = 'individual_mobile';
+          if (this.customOrderChecked[mobileKey]) {
+            const items = configToSave.customOrderMobile.split(',').map(s => s.trim()).filter(Boolean);
+            const checkedItems = items.filter(item => this.customOrderChecked[mobileKey][item] !== false);
+            configToSave.customOrderMobile = checkedItems.join(', ');
+          }
+        }
+        
+        try {
+          this.currentConfig[this.editingQuestion.questionId] = { ...configToSave };
+          await server.saveConfigToSheet(this.editingQuestion.questionId, configToSave);
+          this.showMessage('success', 'Configuration saved');
+          this.closeModal();
+        } catch (err) {
+          this.showMessage('error', 'Failed to save: ' + err);
+        }
+      },
+
+      async saveConfigAndNext() {
+        if (!this.editingQuestion) return;
+        
+        if (!this.editingConfig.questionType || !this.editingConfig.chartType) {
+          this.showMessage('error', 'Please select both question type and chart type');
+          return;
+        }
+        
+        // Create a copy to filter unchecked items
+        const configToSave = { ...this.editingConfig };
+        
+        // Filter custom order to only include checked items (desktop)
+        if (configToSave.sortType === 'custom' && configToSave.customOrder) {
+          const desktopKey = 'individual_desktop';
+          if (this.customOrderChecked[desktopKey]) {
+            const items = configToSave.customOrder.split(',').map(s => s.trim()).filter(Boolean);
+            const checkedItems = items.filter(item => this.customOrderChecked[desktopKey][item] !== false);
+            configToSave.customOrder = checkedItems.join(', ');
+          }
+        }
+        
+        // Filter custom order to only include checked items (mobile)
+        if (configToSave.sortTypeMobile === 'custom' && configToSave.customOrderMobile) {
+          const mobileKey = 'individual_mobile';
+          if (this.customOrderChecked[mobileKey]) {
+            const items = configToSave.customOrderMobile.split(',').map(s => s.trim()).filter(Boolean);
+            const checkedItems = items.filter(item => this.customOrderChecked[mobileKey][item] !== false);
+            configToSave.customOrderMobile = checkedItems.join(', ');
+          }
+        }
+        
+        // Find next question BEFORE updating config
+        const nextQuestion = this.findNextUnconfiguredQuestion();
+        
+        try {
+          this.currentConfig[this.editingQuestion.questionId] = { ...configToSave };
+          await server.saveConfigToSheet(this.editingQuestion.questionId, configToSave);
+          this.showMessage('success', 'Configuration saved');
+          
+          if (nextQuestion) {
+            await this.openConfigModal(nextQuestion.questionId);
+          } else {
+            this.closeModal();
+          }
+        } catch (err) {
+          this.showMessage('error', 'Failed to save: ' + err);
+        }
+      },
+      
+      // === GROUP MODAL ===
+      
+      async openLinkedQuestionsModal(groupName) {
+        this.answerOptionsCache = {};
+        this.editingLinkedGroupName = groupName;
+        this.currentLinkedQuestions = this.questionLinks[groupName] || [];
+        this.currentLinkedGroupIndex = this.linkedQuestionGroups.findIndex(g => g.name === groupName);
+        this.allLinkedGroupNames = this.linkedQuestionGroups.map(g => g.name);
+        
+        this.tempColorGroupAssignments = {};
+        this.tempColorGroupConfigs = {};
+        this.configSignatures = {};
+        this.reconcileMode = false;
+        
+        // Initialize empty configs for all emojis
+        this.colorGroupEmojis.forEach(emoji => {
+          this.tempColorGroupConfigs[emoji] = {
+            questionType: '', chartType: '', mobileChartType: '', 
+            hasOther: false, sortType: 'none', sortTypeMobile: '', 
+            customOrder: '', customOrderMobile: '', colorGroup: emoji
+          };
+        });
+
+        // Generate config signature for comparison (excludes customOrder for base comparison)
+        const getBaseConfigSignature = (cfg) => {
+          if (!cfg || !cfg.questionType) return 'unconfigured';
+          return `${cfg.questionType}|${cfg.chartType}|${cfg.mobileChartType}|${cfg.hasOther}|${cfg.sortType}|${cfg.sortTypeMobile}`;
+        };
+        
+        // Generate full signature including custom order (for reconcile mode)
+        const getFullConfigSignature = (cfg) => {
+          if (!cfg || !cfg.questionType) return 'unconfigured';
+          return `${cfg.questionType}|${cfg.chartType}|${cfg.mobileChartType}|${cfg.hasOther}|${cfg.sortType}|${cfg.sortTypeMobile}|${cfg.customOrder || ''}|${cfg.customOrderMobile || ''}`;
+        };
+
+        // Build config signatures for all questions (for reconcile mode)
+        this.currentLinkedQuestions.forEach(qId => {
+          const cfg = this.currentConfig[qId];
+          this.configSignatures[qId] = {
+            base: getBaseConfigSignature(cfg),
+            full: getFullConfigSignature(cfg),
+            customOrder: cfg?.customOrder || '',
+            customOrderMobile: cfg?.customOrderMobile || ''
+          };
+        });
+
+        // Check if any questions have existing color groups saved in column K
+        const questionsWithColorGroups = this.currentLinkedQuestions.filter(qId => 
+          this.currentConfig[qId]?.colorGroup
+        );
+        
+        if (questionsWithColorGroups.length > 0) {
+          // Use existing color groups from column K
+          const colorGroupConfigs = {};
+          
+          this.currentLinkedQuestions.forEach(qId => {
+            const cfg = this.currentConfig[qId];
+            const existingColorGroup = cfg?.colorGroup;
+            
+            if (existingColorGroup) {
+              this.tempColorGroupAssignments[qId] = existingColorGroup;
+              
+              // Load config for this color group (use first question's config as template)
+              if (!colorGroupConfigs[existingColorGroup] && cfg.questionType) {
+                colorGroupConfigs[existingColorGroup] = { ...cfg };
+              }
+            }
+          });
+          
+          // Apply loaded configs to tempColorGroupConfigs
+          Object.keys(colorGroupConfigs).forEach(emoji => {
+            this.tempColorGroupConfigs[emoji] = colorGroupConfigs[emoji];
+          });
+          
+          // Assign questions without color groups to the first available emoji
+          const unassignedQuestions = this.currentLinkedQuestions.filter(qId => 
+            !this.tempColorGroupAssignments[qId]
+          );
+          
+          if (unassignedQuestions.length > 0) {
+            // Find the first unused emoji or use the first one
+            const usedEmojis = new Set(Object.values(this.tempColorGroupAssignments));
+            const availableEmoji = this.colorGroupEmojis.find(e => !usedEmojis.has(e)) || this.colorGroupEmojis[0];
+            unassignedQuestions.forEach(qId => {
+              this.tempColorGroupAssignments[qId] = availableEmoji;
+            });
+          }
+          
+        } else {
+          // No existing color groups - auto-assign based on config signatures
+          const configGroups = {};
+          let unconfiguredQuestions = [];
+
+          this.currentLinkedQuestions.forEach(qId => {
+            const cfg = this.currentConfig[qId];
+            if (cfg && cfg.questionType) {
+              const sig = getBaseConfigSignature(cfg);
+              if (!configGroups[sig]) configGroups[sig] = [];
+              configGroups[sig].push(qId);
+            } else {
+              unconfiguredQuestions.push(qId);
+            }
+          });
+
+          // Assign configured groups to emojis
+          let emojiIndex = 0;
+          
+          Object.keys(configGroups).forEach(sig => {
+            if (emojiIndex < this.colorGroupEmojis.length) {
+              const emoji = this.colorGroupEmojis[emojiIndex];
+              const qIds = configGroups[sig];
+              
+              qIds.forEach(qId => this.tempColorGroupAssignments[qId] = emoji);
+
+              // Load config from first question in group
+              const firstConfig = this.currentConfig[qIds[0]];
+              if (firstConfig) {
+                this.tempColorGroupConfigs[emoji] = { ...firstConfig, colorGroup: emoji };
+              }
+              emojiIndex++;
+            } else {
+              // Overflow to last emoji
+              const emoji = this.colorGroupEmojis[this.colorGroupEmojis.length - 1];
+              configGroups[sig].forEach(qId => this.tempColorGroupAssignments[qId] = emoji);
+            }
+          });
+
+          // Assign unconfigured questions to next available emoji
+          if (unconfiguredQuestions.length > 0) {
+            const emoji = emojiIndex < this.colorGroupEmojis.length ? 
+                          this.colorGroupEmojis[emojiIndex] : 
+                          this.colorGroupEmojis[this.colorGroupEmojis.length - 1];
+            unconfiguredQuestions.forEach(qId => this.tempColorGroupAssignments[qId] = emoji);
+          }
+        }
+        
+        this.showLinkedQuestionsModal = true;
+        this.loadingLinkedPreview = true;
+        this.linkedQuestionPreviewAnswers = [];
+        this.refreshComparison();
+        await this.preloadLinkedQuestionsAnswerOptions();
+        
+        // Initialize custom order counts for existing configurations
+        await this.initializeCustomOrderCountsForExistingConfigs();
+        
+        if (this.currentLinkedQuestions.length > 0) {
+          this.previewQuestionId = this.currentLinkedQuestions[0];
+          this.loadLinkedQuestionPreview(); 
+        }
+      },
+      
+      async initializeCustomOrderCountsForExistingConfigs() {
+        // For each emoji group with a custom sort type, load counts from cached answers
+        for (const emoji of this.activeColorGroupsInModal) {
+          const config = this.tempColorGroupConfigs[emoji];
+          
+          // Check desktop custom order
+          if (config.sortType === 'custom' && config.customOrder) {
+            const questions = this.getQuestionsForColorGroup(emoji);
+            const answerCounts = {};
+            
+            // Aggregate counts from all questions in this emoji group
+            for (const qId of questions) {
+              const cached = this.answerOptionsCache[qId];
+              if (cached) {
+                cached.forEach(opt => {
+                  answerCounts[opt.value] = (answerCounts[opt.value] || 0) + opt.count;
+                });
+              }
+            }
+            
+            // Update global counts cache
+            this.customOrderCounts = { ...this.customOrderCounts, ...answerCounts };
+            
+            // Initialize checked states for existing custom order items
+            const key = `${emoji}_desktop`;
+            const items = config.customOrder.split(',').map(s => s.trim()).filter(Boolean);
+            if (!this.customOrderChecked[key]) {
+              this.customOrderChecked[key] = {};
+              items.forEach(item => {
+                // Default to checked for existing items
+                this.customOrderChecked[key][item] = true;
+              });
+            }
+            this.customOrderToggleState[key] = 0; // Start at "Uncheck All" state
+          }
+          
+          // Check mobile custom order
+          if (config.sortTypeMobile === 'custom' && config.customOrderMobile) {
+            const questions = this.getQuestionsForColorGroup(emoji);
+            const answerCounts = {};
+            
+            for (const qId of questions) {
+              const cached = this.answerOptionsCache[qId];
+              if (cached) {
+                cached.forEach(opt => {
+                  answerCounts[opt.value] = (answerCounts[opt.value] || 0) + opt.count;
+                });
+              }
+            }
+            
+            this.customOrderCounts = { ...this.customOrderCounts, ...answerCounts };
+            
+            const key = `${emoji}_mobile`;
+            const items = config.customOrderMobile.split(',').map(s => s.trim()).filter(Boolean);
+            if (!this.customOrderChecked[key]) {
+              this.customOrderChecked[key] = {};
+              items.forEach(item => {
+                this.customOrderChecked[key][item] = true;
+              });
+            }
+            this.customOrderToggleState[key] = 0;
+          }
+        }
+      },
+      
+      assignQuestionToColorGroup(questionId, emoji) {
+        this.tempColorGroupAssignments[questionId] = emoji;
+      },
+      
+      getQuestionsForColorGroup(emoji) {
+        return this.currentLinkedQuestions.filter(qId => 
+          this.tempColorGroupAssignments[qId] === emoji
+        );
+      },
+      
+      getColorGroupAvailableCharts(emoji) {
+        const config = this.tempColorGroupConfigs[emoji];
+        if (!config || !config.questionType) return [];
+        return this.chartCompatibility[config.questionType] || [];
+      },
+      
+      onColorGroupQuestionTypeChange(emoji) {
+        const availableCharts = this.getColorGroupAvailableCharts(emoji);
+        const defaults = this.getDefaultConfigForType(this.tempColorGroupConfigs[emoji].questionType);
+        
+        if (defaults.chartType && availableCharts.includes(defaults.chartType)) {
+          this.tempColorGroupConfigs[emoji].chartType = defaults.chartType;
+        } else if (!availableCharts.includes(this.tempColorGroupConfigs[emoji].chartType)) {
+          this.tempColorGroupConfigs[emoji].chartType = '';
+        }
+        
+        if (defaults.sortType) {
+          this.tempColorGroupConfigs[emoji].sortType = defaults.sortType;
+        }
+        
+        if (this.tempColorGroupConfigs[emoji].mobileChartType && !availableCharts.includes(this.tempColorGroupConfigs[emoji].mobileChartType)) {
+          this.tempColorGroupConfigs[emoji].mobileChartType = '';
+        }
+      },
+      
+      async onColorGroupSortTypeChange(emoji, platform) {
+        if (platform === 'desktop') {
+          if (this.tempColorGroupConfigs[emoji].sortType === 'custom') {
+            // Auto-load all unique answers when custom is selected
+            await this.loadAllAnswersToCustomOrder(emoji, 'desktop');
+          } else {
+            this.tempColorGroupConfigs[emoji].customOrder = '';
+            // Clear checked states for this context
+            const key = `${emoji}_desktop`;
+            delete this.customOrderChecked[key];
+            delete this.customOrderToggleState[key];
+          }
+        }
+        if (platform === 'mobile') {
+          if (this.tempColorGroupConfigs[emoji].sortTypeMobile === 'custom') {
+            // Auto-load all unique answers when custom is selected
+            await this.loadAllAnswersToCustomOrder(emoji, 'mobile');
+          } else {
+            this.tempColorGroupConfigs[emoji].customOrderMobile = '';
+            // Clear checked states for this context
+            const key = `${emoji}_mobile`;
+            delete this.customOrderChecked[key];
+            delete this.customOrderToggleState[key];
+          }
+        }
+      },
+      
+      // Preview navigation
+      navigateLinkedQuestionPreview(direction) {
+        const currentIndex = this.currentLinkedQuestions.indexOf(this.previewQuestionId);
+        if (currentIndex === -1) return;
+        
+        const newIndex = currentIndex + direction;
+        if (newIndex >= 0 && newIndex < this.currentLinkedQuestions.length) {
+          this.previewQuestionId = this.currentLinkedQuestions[newIndex];
+          
+          if (this.previewNavigationTimer) {
+            clearTimeout(this.previewNavigationTimer);
+          }
+          
+          this.loadingLinkedPreview = true;
+          this.linkedQuestionPreviewAnswers = [];
+          
+          this.previewNavigationTimer = setTimeout(() => {
+            this.loadLinkedQuestionPreview();
+          }, 400);
+        }
+      },
+      
+      async preloadLinkedQuestionsAnswerOptions() {
+        if (!this.currentLinkedQuestions || this.currentLinkedQuestions.length === 0) return;
+        
+        try {
+          const result = await server.getMultipleAnswerOptions(this.currentLinkedQuestions);
+          
+          Object.keys(result).forEach(qId => {
+            if (result[qId].answers) {
+              this.answerOptionsCache[qId] = result[qId].answers;
+            }
+          });
+        } catch (err) {
+          console.error('Failed to preload answer options:', err);
+        }
+      },
+      
+      async loadLinkedQuestionPreview() {
+        if (!this.previewQuestionId) {
+          this.linkedQuestionPreviewAnswers = [];
+          this.loadingLinkedPreview = false;
+          return;
+        }
+        
+        this.loadingLinkedPreview = true;
+        this.linkedQuestionPreviewAnswers = [];
+        
+        // Check cache first
+        if (this.answerOptionsCache[this.previewQuestionId]) {
+          this.linkedQuestionPreviewAnswers = this.answerOptionsCache[this.previewQuestionId];
+          this.loadingLinkedPreview = false;
+          return;
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        try {
+          const options = await server.getAnswerOptions(this.previewQuestionId);
+          this.linkedQuestionPreviewAnswers = options;
+          this.answerOptionsCache[this.previewQuestionId] = options;
+        } catch (err) {
+          if (err.message && err.message.includes('429')) {
+            this.showMessage('error', 'Rate limit reached. Please wait and try again.');
+          } else {
+            this.showMessage('error', 'Failed to load answers: ' + err);
+          }
+        }
+        
+        this.loadingLinkedPreview = false;
+      },
+      
+      // Comparison
+      async refreshComparison() {
+        if (this.currentLinkedQuestions.length < 2) {
+          this.commonAnswers = [];
+          this.comparisonData = null;
+          return;
+        }
+        
+        this.comparisonLoading = true;
+        const requestId = ++this.comparisonRequestId;
+        
+        try {
+          const result = await server.compareQuestionAnswers(this.currentLinkedQuestions);
+          
+          if (requestId !== this.comparisonRequestId) return;
+          
+          if (result._comparison) {
+            this.commonAnswers = result._comparison.commonAnswers || [];
+            this.comparisonData = result._comparison;
+          } else {
+            this.commonAnswers = [];
+            this.comparisonData = null;
+          }
+        } catch (err) {
+          if (requestId !== this.comparisonRequestId) return;
+          this.commonAnswers = [];
+          this.comparisonData = null;
+        }
+        
+        this.comparisonLoading = false;
+      },
+      
+      getMatchSummary() {
+        if (!this.comparisonData) return '';
+        
+        const totalQuestions = this.comparisonData.totalQuestions || 0;
+        const commonCount = this.comparisonData.commonCount || 0;
+        
+        if (totalQuestions === 2 && this.comparisonData.pairwiseMatches) {
+          const pairKey = Object.keys(this.comparisonData.pairwiseMatches)[0];
+          if (pairKey) {
+            const match = this.comparisonData.pairwiseMatches[pairKey];
+            return `${match.matchPercentage}% match (${match.matchCount} common answers)`;
+          }
+        }
+        
+        return `${commonCount} answers common across all ${totalQuestions} questions`;
+      },
+      
+      useCommonAnswer(answer) {
+        navigator.clipboard.writeText(answer).then(() => {
+          this.showMessage('success', 'Copied to clipboard: ' + answer);
+        });
+      },
+      
+      // Custom order functions for groups
+      getCustomOrderItemsWithMeta(emoji, platform) {
+        const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
+        const orderString = this.tempColorGroupConfigs[emoji][field];
+        if (!orderString) return [];
+        
+        const items = orderString.split(',').map(s => s.trim()).filter(Boolean);
+        const key = `${emoji}_${platform}`;
+        
+        if (!this.customOrderChecked[key]) {
+          this.customOrderChecked[key] = {};
+          items.forEach(item => {
+            this.customOrderChecked[key][item] = true;
+          });
+        }
+        
+        return items.map(value => ({
+          value: value,
+          checked: this.customOrderChecked[key][value] !== false,
+          count: this.customOrderCounts[value]
+        }));
+      },
+      
+      toggleCustomOrderItem(emoji, platform, index) {
+        const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
+        const items = this.tempColorGroupConfigs[emoji][field].split(',').map(s => s.trim()).filter(Boolean);
+        const key = `${emoji}_${platform}`;
+        
+        if (index >= 0 && index < items.length) {
+          const item = items[index];
+          if (!this.customOrderChecked[key]) {
+            this.customOrderChecked[key] = {};
+          }
+          this.customOrderChecked[key][item] = !this.customOrderChecked[key][item];
+        }
+      },
+      
+      toggleColorGroupCheckboxes(emoji, platform) {
+        const key = `${emoji}_${platform}`;
+        const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
+        const items = (this.tempColorGroupConfigs[emoji][field] || '').split(',').map(s => s.trim()).filter(Boolean);
+        
+        if (items.length === 0) return;
+        
+        // Initialize state if needed
+        if (this.customOrderToggleState[key] === undefined) {
+          this.customOrderToggleState[key] = 0;
+        }
+        
+        // Cycle through states: 0 (uncheck) → 1 (check all) → 2 (check 5+) → 0...
+        this.customOrderToggleState[key] = (this.customOrderToggleState[key] + 1) % 3;
+        const state = this.customOrderToggleState[key];
+        
+        if (!this.customOrderChecked[key]) {
+          this.customOrderChecked[key] = {};
+        }
+        
+        items.forEach(item => {
+          if (state === 0) {
+            this.customOrderChecked[key][item] = false;
+          } else if (state === 1) {
+            this.customOrderChecked[key][item] = true;
+          } else if (state === 2) {
+            const count = this.customOrderCounts[item] || 0;
+            this.customOrderChecked[key][item] = count >= 5;
+          }
+        });
+      },
+      
+      moveCustomOrderItem(emoji, platform, index, direction) {
+        const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
+        const items = this.tempColorGroupConfigs[emoji][field].split(',').map(s => s.trim()).filter(Boolean);
+        
+        if (items.length === 0) return;
+        
+        let newIndex = index;
+        if (direction === 'up') newIndex = Math.max(0, index - 1);
+        else if (direction === 'down') newIndex = Math.min(items.length - 1, index + 1);
+        else if (direction === 'top') newIndex = 0;
+        else if (direction === 'bottom') newIndex = items.length - 1;
+        
+        if (newIndex !== index) {
+          const [item] = items.splice(index, 1);
+          items.splice(newIndex, 0, item);
+          this.tempColorGroupConfigs[emoji][field] = items.join(', ');
+        }
+      },
+      
+      async loadAllAnswersToCustomOrder(emoji, platform) {
+        const questions = this.getQuestionsForColorGroup(emoji);
+        if (questions.length === 0) {
+          this.showMessage('error', 'No questions in this group');
+          return;
+        }
+        
+        this.loadingLinkedPreview = true;
+        const allAnswers = new Set();
+        const answerCounts = {};
+        
+        try {
+          // Gather answers from ALL questions in the emoji group
+          for (const qId of questions) {
+            let options;
+            if (this.answerOptionsCache[qId]) {
+              options = this.answerOptionsCache[qId];
+            } else {
+              await new Promise(resolve => setTimeout(resolve, 300));
+              options = await server.getAnswerOptions(qId);
+              this.answerOptionsCache[qId] = options;
+            }
+            
+            options.forEach(opt => {
+              allAnswers.add(opt.value);
+              // Sum counts across all questions
+              answerCounts[opt.value] = (answerCounts[opt.value] || 0) + opt.count;
+            });
+          }
+          
+          // Update global counts cache
+          this.customOrderCounts = { ...this.customOrderCounts, ...answerCounts };
+          
+          // Sort by frequency (most frequent first)
+          const sortedAnswers = Array.from(allAnswers).sort((a, b) => {
+            return (answerCounts[b] || 0) - (answerCounts[a] || 0);
+          });
+          
+          const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
+          this.tempColorGroupConfigs[emoji][field] = sortedAnswers.join(', ');
+          
+          // Initialize checkboxes - default to checking items with 5+ total responses
+          const key = `${emoji}_${platform}`;
+          this.customOrderChecked[key] = {};
+          this.customOrderToggleState[key] = 2; // Set to "Check 5+" state
+          
+          sortedAnswers.forEach(answer => {
+            this.customOrderChecked[key][answer] = (answerCounts[answer] || 0) >= 5;
+          });
+          
+          const checkedCount = sortedAnswers.filter(a => (answerCounts[a] || 0) >= 5).length;
+          this.showMessage('success', `Loaded ${sortedAnswers.length} unique answers from ${questions.length} questions (${checkedCount} with 5+ responses checked)`);
+        } catch (err) {
+          this.showMessage('error', 'Failed to load answers: ' + err.message);
+        } finally {
+          this.loadingLinkedPreview = false;
+        }
+      },
+      
+      hasNextLinkedGroup() {
+        return this.currentLinkedGroupIndex < this.allLinkedGroupNames.length - 1;
+      },
+      
+      async saveLinkedQuestionsAndNext() {
+        await this.saveLinkedQuestionsConfig();
+        
+        const nextGroupName = this.allLinkedGroupNames[this.currentLinkedGroupIndex + 1];
+        if (nextGroupName) {
+          this.openLinkedQuestionsModal(nextGroupName);
+        }
+      },
+      
+      async saveLinkedQuestionsConfig() {
+        const configsToSave = [];
+        
+        for (const emoji of this.activeColorGroupsInModal) {
+          const config = { ...this.tempColorGroupConfigs[emoji] };
+          const questions = this.getQuestionsForColorGroup(emoji);
+          
+          if (questions.length === 0) continue;
+          
+          if (!config.questionType || !config.chartType) {
+            this.showMessage('error', `Please configure ${emoji} group completely`);
+            return;
+          }
+          
+          // Ensure colorGroup is set to the emoji (saved to column K)
+          config.colorGroup = emoji;
+          
+          // Filter custom order to only include checked items
+          if (config.sortType === 'custom' && config.customOrder) {
+            const desktopKey = `${emoji}_desktop`;
+            if (this.customOrderChecked[desktopKey]) {
+              const items = config.customOrder.split(',').map(s => s.trim()).filter(Boolean);
+              const checkedItems = items.filter(item => this.customOrderChecked[desktopKey][item] !== false);
+              config.customOrder = checkedItems.join(', ');
+            }
+          }
+          
+          if (config.sortTypeMobile === 'custom' && config.customOrderMobile) {
+            const mobileKey = `${emoji}_mobile`;
+            if (this.customOrderChecked[mobileKey]) {
+              const items = config.customOrderMobile.split(',').map(s => s.trim()).filter(Boolean);
+              const checkedItems = items.filter(item => this.customOrderChecked[mobileKey][item] !== false);
+              config.customOrderMobile = checkedItems.join(', ');
+            }
+          }
+          
+          questions.forEach(qId => {
+            configsToSave.push({
+              questionId: qId,
+              config: { ...config }
+            });
+          });
+        }
+        
+        if (configsToSave.length === 0) {
+          this.showMessage('error', 'No configurations to save');
+          return;
+        }
+        
+        try {
+          await server.saveMultipleConfigsToSheet(configsToSave);
+          
+          configsToSave.forEach(({ questionId, config }) => {
+            this.currentConfig[questionId] = config;
+          });
+          
+          this.showMessage('success', `Saved ${configsToSave.length} configurations`);
+          this.closeLinkedQuestionsModal();
+        } catch (err) {
+          this.showMessage('error', 'Failed to save: ' + err);
+        }
+      },
+      
+      closeLinkedQuestionsModal() {
+        this.showLinkedQuestionsModal = false;
+        this.editingLinkedGroupName = '';
+        this.currentLinkedQuestions = [];
+        this.tempColorGroupAssignments = {};
+        this.tempColorGroupConfigs = {};
+        this.commonAnswers = [];
+        this.comparisonData = null;
+        this.comparisonCollapsed = false;
+        this.previewQuestionId = '';
+        this.linkedQuestionPreviewAnswers = [];
+        this.answerOptionsCache = {};
+        this.customOrderChecked = {};
+        this.customOrderCounts = {};
+        this.customOrderToggleState = {};
+        // Reset reconcile mode state
+        this.reconcileMode = false;
+        this.reconcileConfigs = {};
+        this.configSignatures = {};
+        // Reset drag state
+        this.dragState = { dragging: false, dragIndex: null, dragOverIndex: null, context: null };
+        if (this.previewNavigationTimer) {
+          clearTimeout(this.previewNavigationTimer);
+        }
+        this.comparisonRequestId++;
+      },
+      
+      closeLinkedQuestionsModalIfBackdrop(e) {
+        if (e.target.classList.contains('modal-overlay')) {
+          this.closeLinkedQuestionsModal();
+        }
+      },
+      
+      // === RECONCILE MODE HELPERS ===
+      // Reconcile mode shows one column per question to compare and merge configs
+      
+      /**
+       * Toggle reconcile mode on/off
+       * When entering reconcile mode, load each question's current config into reconcileConfigs
+       */
+      toggleReconcileMode() {
+        this.reconcileMode = !this.reconcileMode;
+        
+        if (this.reconcileMode) {
+          // Initialize reconcileConfigs with each question's current saved config
+          this.reconcileConfigs = {};
+          this.currentLinkedQuestions.forEach(qId => {
+            const cfg = this.currentConfig[qId] || {};
+            this.reconcileConfigs[qId] = {
+              questionType: cfg.questionType || '',
+              chartType: cfg.chartType || '',
+              mobileChartType: cfg.mobileChartType || '',
+              hasOther: cfg.hasOther || false,
+              sortType: cfg.sortType || 'none',
+              sortTypeMobile: cfg.sortTypeMobile || '',
+              customOrder: cfg.customOrder || '',
+              customOrderMobile: cfg.customOrderMobile || '',
+              colorGroup: cfg.colorGroup || ''
+            };
+          });
+        }
+      },
+      
+      /**
+       * Get list of fields to compare in reconcile mode
+       */
+      get reconcileFields() {
+        return [
+          { key: 'questionType', label: 'Question Type' },
+          { key: 'chartType', label: 'Chart Type (Desktop)' },
+          { key: 'mobileChartType', label: 'Chart Type (Mobile)' },
+          { key: 'hasOther', label: 'Has Other' },
+          { key: 'sortType', label: 'Sort Type (Desktop)' },
+          { key: 'sortTypeMobile', label: 'Sort Type (Mobile)' },
+          { key: 'customOrder', label: 'Custom Order (Desktop)' },
+          { key: 'customOrderMobile', label: 'Custom Order (Mobile)' }
+        ];
+      },
+      
+      /**
+       * Check if a field has different values across questions
+       */
+      fieldHasDifference(fieldKey) {
+        if (!this.reconcileConfigs || Object.keys(this.reconcileConfigs).length === 0) return false;
+        const values = new Set();
+        this.currentLinkedQuestions.forEach(qId => {
+          const cfg = this.reconcileConfigs[qId];
+          if (cfg) {
+            let val = cfg[fieldKey];
+            // Normalize boolean to string for comparison
+            if (typeof val === 'boolean') val = val.toString();
+            // Normalize empty/null/undefined values
+            if (val === null || val === undefined) val = '';
+            values.add(val);
+          }
+        });
+        return values.size > 1;
+      },
+      
+      /**
+       * Check if a specific question's field differs from the majority/first value
+       */
+      questionFieldDiffers(qId, fieldKey) {
+        if (!this.reconcileConfigs || Object.keys(this.reconcileConfigs).length === 0) return false;
+        if (!this.reconcileConfigs[qId]) return false;
+        if (!this.fieldHasDifference(fieldKey)) return false;
+        
+        // Get all unique values for this field
+        const valueCounts = {};
+        this.currentLinkedQuestions.forEach(id => {
+          const cfg = this.reconcileConfigs[id];
+          if (cfg) {
+            let val = cfg[fieldKey];
+            if (typeof val === 'boolean') val = val.toString();
+            if (val === null || val === undefined) val = '';
+            valueCounts[val] = (valueCounts[val] || 0) + 1;
+          }
+        });
+        
+        // Find the most common value
+        let mostCommonValue = '';
+        let maxCount = 0;
+        Object.entries(valueCounts).forEach(([val, count]) => {
+          if (count > maxCount) {
+            maxCount = count;
+            mostCommonValue = val;
+          }
+        });
+        
+        // Check if this question's value differs from most common
+        const cfg = this.reconcileConfigs[qId];
+        let thisVal = cfg[fieldKey];
+        if (typeof thisVal === 'boolean') thisVal = thisVal.toString();
+        if (thisVal === null || thisVal === undefined) thisVal = '';
+        
+        return thisVal !== mostCommonValue;
+      },
+      
+      /**
+       * Get display value for a field in reconcile mode
+       */
+      getReconcileFieldDisplay(qId, fieldKey) {
+        if (!this.reconcileConfigs || !this.reconcileConfigs[qId]) return '';
+        const val = this.reconcileConfigs[qId][fieldKey];
+        if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+        if (fieldKey === 'customOrder' || fieldKey === 'customOrderMobile') {
+          if (!val) return '(none)';
+          const items = val.split(',').map(s => s.trim()).filter(Boolean);
+          return `${items.length} items`;
+        }
+        return val || '(none)';
+      },
+      
+      /**
+       * Merge a field value from source question to all other questions
+       * For custom order fields, combines values from all questions
+       */
+      mergeFieldToAll(sourceQId, fieldKey) {
+        if (!this.reconcileConfigs) return;
+        
+        const sourceVal = this.reconcileConfigs[sourceQId][fieldKey];
+        
+        if (fieldKey === 'customOrder' || fieldKey === 'customOrderMobile') {
+          // Special handling for custom order - combine all values
+          this.mergeCustomOrders(fieldKey);
+        } else {
+          // Copy source value to all other questions
+          this.currentLinkedQuestions.forEach(qId => {
+            if (qId !== sourceQId && this.reconcileConfigs[qId]) {
+              this.reconcileConfigs[qId][fieldKey] = sourceVal;
+            }
+          });
+        }
+        
+        this.showMessage('success', `Applied "${fieldKey}" from ${sourceQId} to all questions`);
+      },
+      
+      /**
+       * Merge custom order values from all questions into a combined list
+       * Preserves unique values and sorts by total frequency
+       */
+      async mergeCustomOrders(fieldKey) {
+        if (!this.reconcileConfigs) return;
+        
+        // Collect all unique values and their counts
+        const allValues = new Set();
+        const valueCounts = {};
+        
+        // First gather from existing configs
+        this.currentLinkedQuestions.forEach(qId => {
+          const cfg = this.reconcileConfigs[qId];
+          if (cfg && cfg[fieldKey]) {
+            const items = cfg[fieldKey].split(',').map(s => s.trim()).filter(Boolean);
+            items.forEach(item => {
+              allValues.add(item);
+            });
+          }
+        });
+        
+        // Get counts from answer options cache if available
+        for (const qId of this.currentLinkedQuestions) {
+          const options = this.answerOptionsCache[qId];
+          if (options) {
+            options.forEach(opt => {
+              valueCounts[opt.value] = (valueCounts[opt.value] || 0) + opt.count;
+            });
+          }
+        }
+        
+        // Sort by frequency (most frequent first), then alphabetically
+        const sortedValues = Array.from(allValues).sort((a, b) => {
+          const countDiff = (valueCounts[b] || 0) - (valueCounts[a] || 0);
+          if (countDiff !== 0) return countDiff;
+          return a.localeCompare(b);
+        });
+        
+        const combinedOrder = sortedValues.join(', ');
+        
+        // Apply to all questions
+        this.currentLinkedQuestions.forEach(qId => {
+          if (this.reconcileConfigs[qId]) {
+            this.reconcileConfigs[qId][fieldKey] = combinedOrder;
+          }
+        });
+        
+        this.showMessage('success', `Merged ${sortedValues.length} unique values into custom order for all questions`);
+      },
+      
+      /**
+       * Apply all reconcile configs back to the main config and save
+       */
+      async applyReconcileChanges() {
+        if (!this.reconcileConfigs) return;
+        
+        const configsToSave = [];
+        
+        // Determine color group - use the first non-empty one or assign new one
+        let colorGroup = '';
+        for (const qId of this.currentLinkedQuestions) {
+          if (this.reconcileConfigs[qId]?.colorGroup) {
+            colorGroup = this.reconcileConfigs[qId].colorGroup;
+            break;
+          }
+        }
+        if (!colorGroup) {
+          colorGroup = this.colorGroupEmojis[0]; // Default to first emoji
+        }
+        
+        this.currentLinkedQuestions.forEach(qId => {
+          const cfg = this.reconcileConfigs[qId];
+          if (cfg) {
+            cfg.colorGroup = colorGroup;
+            configsToSave.push({
+              questionId: qId,
+              config: { ...cfg }
+            });
+          }
+        });
+        
+        if (configsToSave.length === 0) {
+          this.showMessage('error', 'No configurations to save');
+          return;
+        }
+        
+        try {
+          await server.saveMultipleConfigsToSheet(configsToSave);
+          
+          configsToSave.forEach(({ questionId, config }) => {
+            this.currentConfig[questionId] = config;
+          });
+          
+          this.showMessage('success', `Saved ${configsToSave.length} reconciled configurations`);
+          this.reconcileMode = false;
+          this.closeLinkedQuestionsModal();
+        } catch (err) {
+          this.showMessage('error', 'Failed to save: ' + err);
+        }
+      },
+      
+      /**
+       * Get available charts for a question in reconcile mode
+       */
+      getReconcileAvailableCharts(qId) {
+        if (!this.reconcileConfigs || !this.reconcileConfigs[qId]) return [];
+        const qType = this.reconcileConfigs[qId].questionType;
+        if (!qType) return [];
+        return this.chartCompatibility[qType] || [];
+      },
+      
+      /**
+       * Handle question type change in reconcile mode
+       */
+      onReconcileQuestionTypeChange(qId) {
+        if (!this.reconcileConfigs || !this.reconcileConfigs[qId]) return;
+        const cfg = this.reconcileConfigs[qId];
+        const available = this.getReconcileAvailableCharts(qId);
+        
+        // Reset chart types if not compatible
+        if (cfg.chartType && !available.includes(cfg.chartType)) {
+          cfg.chartType = available[0] || '';
+        }
+        if (cfg.mobileChartType && !available.includes(cfg.mobileChartType)) {
+          cfg.mobileChartType = '';
+        }
+      },
+      
+      // === FACETING ===
+      
+      async openTextFacetModal() {
+        if (!this.editingQuestion || !this.editingQuestion.questionId) return;
+        this.showFacetModal = true;
+        this.facetPendingEdits = {};
+        this.facetSearchTerm = '';
+        this.facetOriginalValues = {};
+        this.facetSplitByComma = false;
+        this.facetSortBy = 'alphabetical';
+        await this.loadFacetValues();
+      },
+      
+      openLinkedQuestionFacet() {
+        if (!this.previewQuestionId) return;
+        
+        this.editingQuestion = this.questions.find(q => q.questionId === this.previewQuestionId);
+        if (!this.editingQuestion) return;
+        
+        this.showFacetModal = true;
+        this.facetPendingEdits = {};
+        this.facetSearchTerm = '';
+        this.facetOriginalValues = {};
+        this.loadFacetValues();
+      },
+      
+      async openLinkedGroupFacetModal() {
+        // Create a pseudo-question for group faceting
+        this.editingQuestion = {
+          questionId: this.editingLinkedGroupName,
+          questionText: `Group: ${this.editingLinkedGroupName} (${this.currentLinkedQuestions.length} questions)`
+        };
+        
+        this.showFacetModal = true;
+        this.facetPendingEdits = {};
+        this.facetSearchTerm = '';
+        this.facetOriginalValues = {};
+        
+        await this.loadFacetValues();
+      },
+      
+      async loadFacetValues() {
+        if (!this.editingQuestion || !this.editingQuestion.questionId) {
+          this.showMessage('error', 'No question selected');
+          return;
+        }
+        
+        this.loadingFacetValues = true;
+        this.facetValues = [];
+        this.facetOriginalValues = {};
+        
+        try {
+          // Check if this is group faceting
+          if (this.editingQuestion.questionId === this.editingLinkedGroupName && this.editingLinkedGroupName) {
+            // Load combined values from all questions in the group
+            const allAnswers = {};
+            
+            for (let i = 0; i < this.currentLinkedQuestions.length; i++) {
+              const qId = this.currentLinkedQuestions[i];
+              
+              if (i > 0) {
+                await new Promise(resolve => setTimeout(resolve, 400));
+              }
+              
+              try {
+                const options = await server.getAnswerOptions(qId);
+                options.forEach(opt => {
+                  allAnswers[opt.value] = (allAnswers[opt.value] || 0) + opt.count;
+                });
+              } catch (err) {
+                console.error(`Failed to load answers for ${qId}:`, err);
+              }
+            }
+            
+            this.facetValues = Object.entries(allAnswers)
+              .map(([value, count]) => ({ value, count }));
+          } else {
+            // Single question
+            const options = await server.getAnswerOptions(this.editingQuestion.questionId);
+            this.facetValues = options.map(opt => ({
+              value: opt.value,
+              count: opt.count
+            }));
+          }
+          
+          // Store original values
+          this.facetValues.forEach(v => {
+            this.facetOriginalValues[v.value] = v.value;
+          });
+          
+          // Apply splitting if enabled
+          if (this.facetSplitByComma) {
+            this.applySplitToValues();
+          }
+          
+          this.sortFacetValues(this.facetSortBy);
+          
+        } catch (err) {
+          if (err.message && err.message.includes('429')) {
+            this.showMessage('error', 'Rate limit reached. Please wait and try again.');
+          } else {
+            this.showMessage('error', 'Failed to load values: ' + (err.message || err));
+          }
+        }
+        
+        this.loadingFacetValues = false;
+      },
+      
+      toggleFacetSplit() {
+        if (this.facetSplitByComma) {
+          this.applySplitToValues();
+        } else {
+          this.loadFacetValues();
+        }
+      },
+      
+      applySplitToValues() {
+        const splitValues = {};
+        
+        this.facetValues.forEach(item => {
+          const parts = item.value.split(',').map(p => p.trimEnd()).filter(p => p);
+          parts.forEach(part => {
+            splitValues[part] = (splitValues[part] || 0) + item.count;
+          });
+        });
+        
+        this.facetValues = Object.entries(splitValues).map(([value, count]) => ({
+          value,
+          count
+        }));
+        
+        this.facetValues.forEach(v => {
+          if (!this.facetOriginalValues.hasOwnProperty(v.value)) {
+            this.facetOriginalValues[v.value] = v.value;
+          }
+        });
+        
+        this.sortFacetValues(this.facetSortBy);
+      },
+      
+      sortFacetValues(sortType) {
+        this.facetSortBy = sortType;
+        
+        if (sortType === 'alphabetical') {
+          this.facetValues.sort((a, b) => {
+            const aVal = this.facetPendingEdits[a.value] !== undefined ? this.facetPendingEdits[a.value] : a.value;
+            const bVal = this.facetPendingEdits[b.value] !== undefined ? this.facetPendingEdits[b.value] : b.value;
+            return aVal.localeCompare(bVal);
+          });
+        } else if (sortType === 'numerical') {
+          this.facetValues.sort((a, b) => {
+            const aVal = this.facetPendingEdits[a.value] !== undefined ? this.facetPendingEdits[a.value] : a.value;
+            const bVal = this.facetPendingEdits[b.value] !== undefined ? this.facetPendingEdits[b.value] : b.value;
+            const aNum = parseFloat(aVal);
+            const bNum = parseFloat(bVal);
+            if (isNaN(aNum) && isNaN(bNum)) return 0;
+            if (isNaN(aNum)) return 1;
+            if (isNaN(bNum)) return -1;
+            return aNum - bNum;
+          });
+        } else if (sortType === 'count') {
+          this.facetValues.sort((a, b) => b.count - a.count);
+        }
+        
+        this.facetValues = [...this.facetValues];
+      },
+      
+      toTitleCase(str) {
+        const lowercase = new Set(['a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'from', 'in', 'into', 'of', 'on', 'or', 'the', 'to', 'with']);
+        
+        const words = str.toLowerCase().split(' ');
+        return words.map((word, index) => {
+          if (index === 0 || index === words.length - 1 || !lowercase.has(word)) {
+            return word.charAt(0).toUpperCase() + word.slice(1);
+          }
+          return word;
+        }).join(' ');
+      },
+      
+      toSentenceCase(str) {
+        const alwaysCapitalize = new Set(['i', "i'm", "i've", "i'll", "i'd"]);
+        
+        const sentences = str.toLowerCase().split('. ');
+        return sentences.map(sentence => {
+          const words = sentence.split(' ');
+          return words.map((word, index) => {
+            if (index === 0) {
+              return word.charAt(0).toUpperCase() + word.slice(1);
+            }
+            if (alwaysCapitalize.has(word.toLowerCase())) {
+              return word.charAt(0).toUpperCase() + word.slice(1);
+            }
+            return word;
+          }).join(' ');
+        }).join('. ');
+      },
+      
+      applyCaseToValue(originalValue, caseType) {
+        const currentValue = this.facetPendingEdits[originalValue] !== undefined ? 
+          this.facetPendingEdits[originalValue] : originalValue;
+        
+        let newValue;
+        if (caseType === 'upper') {
+          newValue = currentValue.toUpperCase();
+        } else if (caseType === 'title') {
+          newValue = this.toTitleCase(currentValue);
+        } else if (caseType === 'sentence') {
+          newValue = this.toSentenceCase(currentValue);
+        }
+        
+        this.updateFacetEdit(originalValue, newValue);
+      },
+      
+      bulkApplyCaseChange(caseType) {
+        this.facetValues.forEach(item => {
+          this.applyCaseToValue(item.value, caseType);
+        });
+      },
+      
+      restoreFacetValue(originalValue) {
+        if (this.facetPendingEdits.hasOwnProperty(originalValue)) {
+          delete this.facetPendingEdits[originalValue];
+          this.facetPendingEdits = { ...this.facetPendingEdits };
+        }
+      },
+      
+      updateFacetEdit(original, newValue) {
+        if (original === newValue) {
+          delete this.facetPendingEdits[original];
+        } else {
+          this.facetPendingEdits[original] = newValue;
+        }
+        this.facetPendingEdits = { ...this.facetPendingEdits };
+      },
+      
+      async applyFacetChanges() {
+        if (Object.keys(this.facetPendingEdits).length === 0) return;
+        
+        try {
+          this.loadingFacetValues = true;
+          
+          const allReplacements = Object.entries(this.facetPendingEdits)
+            .map(([old, newVal]) => ({
+              oldValue: old,
+              newValue: newVal
+            }));
+          
+          if (allReplacements.length === 0) {
+            this.showMessage('warning', 'No changes to apply');
+            this.loadingFacetValues = false;
+            return;
+          }
+          
+          // Check if this is a group facet operation
+          if (this.editingQuestion.questionId === this.editingLinkedGroupName) {
+            // Apply to all questions in the group
+            await server.replaceTextValuesRateOptimized(
+              this.currentLinkedQuestions, 
+              allReplacements,
+              this.facetSplitByComma
+            );
+            this.showMessage('success', `Applied ${allReplacements.length} changes to ${this.currentLinkedQuestions.length} questions`);
+          } else {
+            // Apply to single question
+            await server.replaceTextValuesWithOptions(
+              this.editingQuestion.questionId, 
+              allReplacements,
+              this.facetSplitByComma
+            );
+            this.showMessage('success', `Applied ${allReplacements.length} changes`);
+          }
+          
+          this.facetPendingEdits = {};
+          
+          // Reload the appropriate data
+          if (this.editingQuestion.questionId === this.editingLinkedGroupName) {
+            await this.openLinkedGroupFacetModal();
+          } else {
+            await this.loadFacetValues();
+            
+            // Reload preview if in group modal
+            if (this.showLinkedQuestionsModal && this.previewQuestionId === this.editingQuestion.questionId) {
+              await this.loadLinkedQuestionPreview();
+            }
+            
+            // Reload answer options if in individual config modal
+            if (this.showConfigModal && this.editingConfig.questionType) {
+              await this.loadAnswerOptions(this.editingQuestion.questionId);
+            }
+          }
+        } catch (err) {
+          this.showMessage('error', 'Failed to apply changes: ' + err);
+        }
+        
+        this.loadingFacetValues = false;
+      },
+      
+      closeFacetModal() {
+        this.showFacetModal = false;
+        this.facetValues = [];
+        this.facetPendingEdits = {};
+        this.facetSearchTerm = '';
+        this.facetSplitByComma = false;
+        this.facetSortBy = 'alphabetical';
+        this.facetOriginalValues = {};
+      },
+      
+      closeFacetModalIfBackdrop(e) {
+        if (e.target.classList.contains('facet-modal-overlay')) {
+          this.closeFacetModal();
+        }
+      },
+      
+      // === UPLOAD ===
+      
+      async uploadConfig() {
+        try {
+          const result = await server.uploadConfigToDatabase(this.currentConfig);
+          this.showMessage('success', `Uploaded ${result.uploaded} configurations to database`);
+        } catch (err) {
+          this.showMessage('error', 'Upload failed: ' + err);
+        }
+      },
+      
+      // === MESSAGES ===
+      
+      showMessage(type, text) {
+        this.messages.push({ type, text });
+        setTimeout(() => {
+          this.messages = this.messages.filter(m => m.text !== text);
+        }, 5000);
+      }
+    };
+  }
+</script>

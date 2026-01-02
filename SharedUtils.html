@@ -1,0 +1,296 @@
+<!-- SharedUtils.html - Common JavaScript utilities -->
+<script>
+  /**
+   * Promisified wrapper for google.script.run
+   * Usage: await server.functionName(args)
+   */
+  const server = new Proxy({}, {
+    get(target, prop) {
+      return (...args) => {
+        return new Promise((resolve, reject) => {
+          google.script.run
+            .withSuccessHandler(resolve)
+            .withFailureHandler(reject)
+            [prop](...args);
+        });
+      }
+    }
+  });
+
+  // === STRING UTILITIES ===
+
+  /**
+   * Escape HTML special characters
+   * @param {string} str
+   * @returns {string}
+   */
+  function escapeHtml(str) {
+    if (typeof str !== 'string') return '';
+    const escapeMap = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;'
+    };
+    return str.replace(/[&<>"']/g, m => escapeMap[m]);
+  }
+
+  /**
+   * Convert string to sentence case
+   * @param {string} str
+   * @returns {string}
+   */
+  function toSentenceCase(str) {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+  }
+
+  /**
+   * Convert string to title/capital case
+   * @param {string} str
+   * @returns {string}
+   */
+  function toCapitalCase(str) {
+    if (!str) return '';
+    return str.toLowerCase()
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
+
+  /**
+   * Truncate string with ellipsis
+   * @param {string} str
+   * @param {number} maxLength
+   * @returns {string}
+   */
+  function truncate(str, maxLength = 50) {
+    if (!str || str.length <= maxLength) return str;
+    return str.substring(0, maxLength - 3) + '...';
+  }
+
+  // === ARRAY UTILITIES ===
+
+  /**
+   * Group array items by a key function
+   * @param {Array} array
+   * @param {Function} keyFn
+   * @returns {Object}
+   */
+  function groupBy(array, keyFn) {
+    return array.reduce((acc, item) => {
+      const key = keyFn(item);
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(item);
+      return acc;
+    }, {});
+  }
+
+  /**
+   * Sort array of objects by key
+   * @param {Array} array
+   * @param {string} key
+   * @param {boolean} descending
+   * @returns {Array}
+   */
+  function sortBy(array, key, descending = false) {
+    return [...array].sort((a, b) => {
+      const valA = a[key];
+      const valB = b[key];
+      const cmp = valA < valB ? -1 : valA > valB ? 1 : 0;
+      return descending ? -cmp : cmp;
+    });
+  }
+
+  // === DOM UTILITIES ===
+
+  /**
+   * Create element with attributes and children
+   * @param {string} tag
+   * @param {Object} attrs
+   * @param {...(string|Node)} children
+   * @returns {HTMLElement}
+   */
+  function createElement(tag, attrs = {}, ...children) {
+    const el = document.createElement(tag);
+    Object.entries(attrs).forEach(([k, v]) => {
+      if (k === 'className') el.className = v;
+      else if (k.startsWith('on') && typeof v === 'function') {
+        el.addEventListener(k.slice(2).toLowerCase(), v);
+      } else {
+        el.setAttribute(k, v);
+      }
+    });
+    children.forEach(child => {
+      if (typeof child === 'string') {
+        el.appendChild(document.createTextNode(child));
+      } else if (child instanceof Node) {
+        el.appendChild(child);
+      }
+    });
+    return el;
+  }
+
+  /**
+   * Query selector shorthand
+   * @param {string} selector
+   * @param {Element} parent
+   * @returns {Element}
+   */
+  function $(selector, parent = document) {
+    return parent.querySelector(selector);
+  }
+
+  /**
+   * Query selector all shorthand
+   * @param {string} selector
+   * @param {Element} parent
+   * @returns {NodeList}
+   */
+  function $$(selector, parent = document) {
+    return parent.querySelectorAll(selector);
+  }
+
+  // === DEBOUNCE/THROTTLE ===
+
+  /**
+   * Debounce a function
+   * @param {Function} fn
+   * @param {number} delay
+   * @returns {Function}
+   */
+  function debounce(fn, delay = 300) {
+    let timeoutId;
+    return function(...args) {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => fn.apply(this, args), delay);
+    };
+  }
+
+  /**
+   * Throttle a function
+   * @param {Function} fn
+   * @param {number} limit
+   * @returns {Function}
+   */
+  function throttle(fn, limit = 100) {
+    let lastCall = 0;
+    return function(...args) {
+      const now = Date.now();
+      if (now - lastCall >= limit) {
+        lastCall = now;
+        return fn.apply(this, args);
+      }
+    };
+  }
+
+  // === NOTIFICATION HELPERS ===
+
+  /**
+   * Create a toast notification mixin for Alpine.js
+   * @returns {Object}
+   */
+  function createToastMixin() {
+    return {
+      toast: {
+        show: false,
+        message: '',
+        type: 'success'
+      },
+      
+      showToast(message, type = 'success', duration = 3000) {
+        this.toast.message = message;
+        this.toast.type = type;
+        this.toast.show = true;
+        setTimeout(() => this.toast.show = false, duration);
+      }
+    };
+  }
+
+  /**
+   * Create a loader mixin for Alpine.js
+   * @returns {Object}
+   */
+  function createLoaderMixin() {
+    return {
+      isLoading: false,
+      loaderMessage: '',
+      
+      showLoader(isLoading, message = '') {
+        this.isLoading = isLoading;
+        this.loaderMessage = message;
+      },
+      
+      async withLoader(message, asyncFn) {
+        this.showLoader(true, message);
+        try {
+          return await asyncFn();
+        } finally {
+          this.showLoader(false);
+        }
+      }
+    };
+  }
+
+  /**
+   * Create an error handler mixin for Alpine.js
+   * @returns {Object}
+   */
+  function createErrorHandlerMixin() {
+    return {
+      handleError(error) {
+        console.error(error);
+        this.showLoader(false);
+        this.showToast(`Error: ${error.message}`, 'error');
+      }
+    };
+  }
+
+  // === CLIPBOARD ===
+
+  /**
+   * Copy text to clipboard
+   * @param {string} text
+   * @returns {Promise<boolean>}
+   */
+  async function copyToClipboard(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (err) {
+      console.error('Failed to copy:', err);
+      return false;
+    }
+  }
+
+  // === LOCAL STORAGE HELPERS ===
+
+  /**
+   * Get item from localStorage with JSON parsing
+   * @param {string} key
+   * @param {any} defaultValue
+   * @returns {any}
+   */
+  function getStoredValue(key, defaultValue = null) {
+    try {
+      const item = localStorage.getItem(key);
+      return item ? JSON.parse(item) : defaultValue;
+    } catch (e) {
+      return defaultValue;
+    }
+  }
+
+  /**
+   * Set item in localStorage with JSON stringification
+   * @param {string} key
+   * @param {any} value
+   */
+  function setStoredValue(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+      console.error('Failed to store value:', e);
+    }
+  }
+</script>

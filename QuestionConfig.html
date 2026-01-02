@@ -2,433 +2,124 @@
 <html>
 <head>
   <base target="_top">
+  <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js" defer></script>
+  
+  <?!= HtmlService.createHtmlOutputFromFile('SharedStyles').getContent(); ?>
+  
   <style>
-    :root {
-      --primary: #1a73e8; --primary-dark: #1557b0; --primary-light: #e8f0fe;
-      --success: #1e8e3e; --success-bg: #e6f4ea;
-      --error: #d93025; --error-bg: #fce8e6;
-      --warning: #f9ab00; --warning-bg: #fef7e0;
-      --text: #202124; --text-secondary: #5f6368; --text-light: #9aa0a6;
-      --bg: #f5f5f5; --bg-light: #f8f9fa; --bg-white: white;
-      --border: #e0e0e0; --border-light: #dadce0; --border-dark: #202124;
-      --shadow: 0 2px 4px rgba(0,0,0,0.1); --shadow-lg: 0 8px 24px rgba(0,0,0,0.3);
-    }
-    
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Google Sans', 'Roboto', Arial, sans-serif; background: var(--bg); overflow-x: hidden; }
-    
+    /* QuestionConfig-specific styles */
     .container { max-width: 1500px; margin: 0 auto; background: var(--bg-white); min-height: 100vh; }
-    .header { background: var(--primary); color: white; padding: 24px 30px; box-shadow: var(--shadow); }
-    .header h1 { font-size: 24px; font-weight: 400; margin-bottom: 8px; }
-    .header .subtitle { font-size: 14px; opacity: 0.9; }
+    .header { background: var(--primary); color: white; padding: 24px 30px; }
     .content { padding: 30px; }
     
-    .tab-container { border-bottom: 2px solid var(--border); margin-bottom: 30px; display: flex; gap: 0; }
+    .tab-container { border-bottom: 2px solid var(--border); margin-bottom: 30px; display: flex; }
     .tab { padding: 12px 24px; cursor: pointer; border: none; background: none; font-size: 14px; 
            font-weight: 500; color: var(--text-secondary); border-bottom: 3px solid transparent; transition: all 0.2s; }
     .tab:hover { background: var(--bg-light); }
     .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
-    
-    .search-box { margin-bottom: 20px; position: relative; }
-    .search-box input { width: 100%; padding: 10px 12px 10px 40px; border: 1px solid var(--border-light); 
-                        border-radius: 4px; font-size: 14px; }
-    .search-box::before { content: "🔍"; position: absolute; left: 12px; top: 50%; 
-                          transform: translateY(-50%); opacity: 0.5; }
     
     .question-list { max-height: 550px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
     .question-item { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; 
                      justify-content: space-between; align-items: center; transition: background 0.2s; }
     .question-item:hover { background: var(--bg-light); }
-    .question-item:last-child { border-bottom: none; }
-    .question-info { flex: 1; min-width: 0; }
-    .question-id { font-weight: 600; color: var(--primary); margin-bottom: 4px; font-size: 14px; }
-    .question-text { color: var(--text-secondary); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .question-actions { display: flex; gap: 12px; align-items: center; flex-shrink: 0; margin-left: 20px; }
     
-    .status-badge { padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 500; white-space: nowrap; }
-    .status-configured { background: var(--success-bg); color: var(--success); }
-    .status-unconfigured { background: var(--warning-bg); color: #e65100; }
-    
-    .btn { padding: 8px 16px; border: none; border-radius: 4px; font-size: 14px; font-weight: 500; 
-           cursor: pointer; transition: all 0.2s; white-space: nowrap; }
-    .btn-primary { background: var(--primary); color: white; }
-    .btn-primary:hover { background: var(--primary-dark); box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
-    .btn-secondary { background: #f1f3f4; color: var(--text-secondary); }
-    .btn-secondary:hover { background: #e8eaed; }
-    .btn-small { padding: 6px 12px; font-size: 13px; }
-    .btn-emoji { padding: 6px 10px; font-size: 16px; line-height: 1; }
-    .btn-facet { background: #9c27b0; color: white; }
-    .btn-facet:hover { background: #7b1fa2; }
-    .btn:disabled { 
-      opacity: 0.4; 
-      cursor: not-allowed; 
-    }
-
-    .action-buttons { display: flex; gap: 12px; padding: 20px 30px; border-top: 1px solid var(--border); 
-                      background: var(--bg-light); position: sticky; bottom: 0; }
-    
-    .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
-                     background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+    /* Modal styles */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
     .modal-overlay.active { display: flex; }
-    .modal { background: white; padding: 0; border-radius: 8px; max-width: 1000px; width: 95%; 
-             max-height: 90vh; overflow: hidden; box-shadow: var(--shadow-lg); display: flex; flex-direction: column; }
+    .modal { background: white; border-radius: 8px; max-width: 1000px; width: 95%; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column; }
     .modal.wide { max-width: 95vw; width: 95vw; }
     .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); background: var(--bg-light); }
-    .modal-header h2 { font-size: 20px; font-weight: 500; color: var(--text); }
     .modal-content { padding: 24px; overflow-y: auto; flex: 1; display: flex; gap: 24px; }
-    .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; 
-                    gap: 12px; justify-content: flex-end; background: var(--bg-light); }
+    .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; gap: 12px; justify-content: flex-end; background: var(--bg-light); }
     
-    /* Regular modal layout (individual questions) */
-    .config-column { flex: 1; min-width: 0; }
-    .preview-column { width: 350px; flex-shrink: 0; }
-    
-    /* Wide modal layout (groups) */
+    /* Group modal layout */
     .config-container { display: flex; height: 100%; overflow: hidden; }
     .left-panel { width: 400px; flex-shrink: 0; border-right: 2px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; }
     .right-panel { flex: 1; overflow-x: auto; overflow-y: hidden; display: flex; }
     .config-columns-container { display: flex; height: 100%; min-width: min-content; }
-    .config-column-item { min-width: 280px; max-width: 350px; border-right: 1px solid var(--border-light); 
-                          display: flex; flex-direction: column; overflow-y: auto; }
-    .config-column-item:last-child { border-right: none; }
-    
-    /* Left panel sections */
-    .panel-section { padding: 20px; border-bottom: 1px solid var(--border); }
-    .panel-section:last-child { border-bottom: none; }
-    
-    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-    .section-header.collapsible { cursor: pointer; user-select: none; }
-    .section-header.collapsible:hover { background: var(--bg-light); padding: 4px; margin: -4px -4px 8px; border-radius: 4px; }
-    .section-title { font-size: 14px; font-weight: 600; color: var(--text); }
-    .refresh-icon { cursor: pointer; font-size: 16px; color: var(--text-secondary); margin-left: 8px; 
-                    padding: 4px; border-radius: 4px; transition: all 0.2s; }
-    .refresh-icon:hover { background: var(--bg-light); color: var(--primary); }
-    .refresh-icon.spinning { animation: spin 1s linear infinite; }
-    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-    .collapse-icon { font-size: 18px; color: var(--text-secondary); transition: transform 0.2s; }
-    .collapse-icon.collapsed { transform: rotate(-90deg); }
-    .section-content { 
-      overflow: visible;
-      transition: max-height 0.3s ease; 
-    }
-
-    .section-content.collapsed { 
-      max-height: 0 !important; 
-      overflow: hidden;
-    }
-
-    /* Ensure comparison items are fully visible */
-    .common-answer-item { 
-      padding: 8px 12px; 
-      border-bottom: 1px solid var(--border-light); 
-      font-size: 13px; 
-      cursor: pointer;
-      word-wrap: break-word;
-      overflow-wrap: break-word;
-    }
-        
-    /* Question list in left panel with colored group dropdowns */
-    .questions-list { max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; background: white; }
-    .question-chip { padding: 8px 12px 8px 8px; border-bottom: 1px solid var(--border-light); font-size: 12px; 
-                     color: var(--text); background: white; display: flex; align-items: flex-start; gap: 8px; }
-    .question-chip:last-child { border-bottom: none; }
-    .question-chip:hover { background: var(--bg-light); }
-    .question-chip-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
-    .question-chip-checkbox { margin-top: 2px; flex-shrink: 0; cursor: pointer; width: 16px; height: 16px; }
-    .question-chip-content { flex: 1; min-width: 0; }
-    .question-chip-id { font-weight: 600; color: var(--primary); margin-bottom: 2px; }
-    .question-chip-text { color: var(--text-secondary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; 
-                          display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-    
-    
-    /* Group selector dropdown with colored dots */
-    .group-selector { 
-      width: 50px !important;
-      min-width: 50px;
-      max-width: 50px;
-      margin-top: 0;
-      margin-right: 8px;
-      font-size: 18px; 
-      padding: 2px;
-      text-align: center;
-      text-align-last: center;
-      cursor: pointer;
-      transition: border-color 0.2s, background 0.2s;
-      background: white;
-      border: 1px solid var(--border-light);
-      flex-shrink: 0;
-      overflow: visible;
-      line-height: 1.2;
-    }
-    .group-selector:focus {
-      outline: none;
-      box-shadow: 0 0 0 2px var(--primary-light);
-    }
-    .group-selector option { 
-      padding: 4px 6px; 
-      font-size: 18px;
-      text-align: center;
-    }
-    .custom-order-list {
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      padding: 8px;
-      background: #f9f9f9;
-    }
-
-    .custom-order-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 6px 8px;
-      margin: 4px 0;
-      background: white;
-      border: 1px solid #e0e0e0;
-      border-radius: 3px;
-    }
-
-    .custom-order-item .item-text {
-      flex: 1;
-      font-size: 13px;
-    }
-
-    .custom-order-item .item-controls {
-      display: flex;
-      gap: 4px;
-    }
-
-    .btn-move {
-      padding: 2px 6px;
-      font-size: 14px;
-      border: 1px solid #ccc;
-      background: white;
-      border-radius: 3px;
-      cursor: pointer;
-      min-width: 28px;
-    }
-
-    .btn-move:hover:not(:disabled) {
-      background: #f0f0f0;
-      border-color: #999;
-    }
-
-    .btn-move:disabled {
-      opacity: 0.3;
-      cursor: not-allowed;
-    }
-
-    .custom-order-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 8px;
-      padding: 4px 0;
-    }
-
-    .custom-order-item.unchecked {
-      opacity: 0.5;
-      background: #f5f5f5;
-    }
-
-    .custom-order-item .item-checkbox {
-      margin-right: 8px;
-      cursor: pointer;
-      width: 16px;
-      height: 16px;
-      flex-shrink: 0;
-    }
-
-    .custom-order-item .item-count {
-      margin: 0 8px;
-      padding: 2px 8px;
-      background: var(--primary-light);
-      color: var(--primary);
-      border-radius: 10px;
-      font-size: 11px;
-      font-weight: 600;
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-
-    .btn-counts {
-      padding: 4px 12px;
-      font-size: 12px;
-      background: var(--success);
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: 500;
-    }
-
-    .btn-counts:hover {
-      background: #16803d;
-    }
-
-    .btn-counts:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    /* TEXT FACETING MODAL STYLES */
-    .facet-modal-overlay { 
-      display: none; 
-      position: fixed; 
-      top: 0; 
-      left: 0; 
-      right: 0; 
-      bottom: 0; 
-      background: rgba(0,0,0,0.5); 
-      z-index: 1100; 
-      align-items: center; 
-      justify-content: center; 
-    }
-    .facet-modal-overlay.active { display: flex; }
-    .facet-modal { 
-      background: white; 
-      padding: 0; 
-      border-radius: 8px; 
-      max-width: 1200px; 
-      width: 95%; 
-      max-height: 85vh; 
-      overflow: hidden; 
-      box-shadow: var(--shadow-lg); 
-      display: flex; 
-      flex-direction: column; 
-    }
-    .facet-modal-header { 
-      padding: 20px 24px; 
-      border-bottom: 1px solid var(--border); 
-      background: var(--primary); 
-      color: white; 
-      display: flex; 
-      align-items: center; 
-      justify-content: space-between;
-    }
-    .facet-modal-header h2 { font-size: 20px; font-weight: 500; color: var(--text); }
-    .close-btn { 
-      background: none; 
-      border: none; 
-      font-size: 28px; 
-      line-height: 1; 
-      color: var(--text-secondary); 
-      cursor: pointer; 
-      padding: 0; 
-      width: 32px; 
-      height: 32px; 
-      display: flex; 
-      align-items: center; 
-      justify-content: center; 
-      border-radius: 4px;
-      transition: background 0.2s;
-    }
-    .close-btn:hover { background: var(--bg); }
-    .facet-modal-content { 
-      padding: 24px; 
-      overflow-y: auto; 
-      flex: 1; 
-    }
-    .facet-controls { 
-      display: flex; 
-      gap: 16px; 
-      margin-bottom: 20px; 
-      flex-wrap: wrap;
-      align-items: center;
-    }
-    .facet-search { 
-      flex: 1; 
-      min-width: 200px;
-    }
-    .facet-values-list { 
-      max-height: 400px; 
-      overflow-y: auto; 
-      border: 1px solid var(--border); 
-      border-radius: 4px; 
-    }
-    .facet-value-item { 
-      padding: 12px 16px; 
-      border-bottom: 1px solid var(--border-light); 
-      display: flex; 
-      justify-content: space-between; 
-      align-items: center;
-      transition: background 0.2s;
-    }
-    .facet-value-item:hover { background: var(--bg-light); }
-    .facet-value-item:last-child { border-bottom: none; }
-    .facet-value-text { 
-      font-size: 14px; 
-      color: var(--text); 
-      flex: 1;
-      margin-right: 12px;
-    }
-    .facet-value-count { 
-      font-size: 12px; 
-      color: var(--text-secondary); 
-      background: var(--bg-light);
-      padding: 2px 8px;
-      border-radius: 12px;
-      font-weight: 500;
-    }
-    
-    .message { padding: 12px 20px; margin-bottom: 16px; border-radius: 4px; font-size: 14px; }
-    .message-success { background: var(--success-bg); color: var(--success); border-left: 4px solid var(--success); }
-    .message-error { background: var(--error-bg); color: var(--error); border-left: 4px solid var(--error); }
-    .message-warning { background: var(--warning-bg); color: var(--warning); border-left: 4px solid var(--warning); }
-    
-    .loading-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
-                       background: rgba(255,255,255,0.95); z-index: 2000; align-items: center; 
-                       justify-content: center; flex-direction: column; }
-    .loading-overlay.active { display: flex; }
-    .spinner { border: 4px solid var(--border); border-top: 4px solid var(--primary); 
-               border-radius: 50%; width: 48px; height: 48px; animation: spin 1s linear infinite; }
-    .loading-text { margin-top: 20px; font-size: 16px; color: var(--text-secondary); }
-    
-    .form-group { margin-bottom: 20px; }
-    .form-label { display: block; font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
-    .form-select, .form-input, .form-textarea { width: 100%; padding: 8px 12px; border: 1px solid var(--border-light); 
-                                                  border-radius: 4px; font-size: 14px; font-family: inherit; }
-    .form-select:focus, .form-input:focus, .form-textarea:focus { outline: none; border-color: var(--primary); 
-                                                                    box-shadow: 0 0 0 3px var(--primary-light); }
-    .form-textarea { resize: vertical; min-height: 80px; font-family: 'Monaco', 'Courier New', monospace; }
-    .form-checkbox { width: 18px; height: 18px; cursor: pointer; }
-    .checkbox-label { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text); cursor: pointer; }
-    
-    .preview-section { background: var(--bg-light); padding: 16px; border-radius: 6px; margin-top: 16px; }
-    .preview-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 12px; 
-                     text-transform: uppercase; letter-spacing: 0.5px; }
-    .preview-list { max-height: 300px; overflow-y: auto; }
-    .preview-item { padding: 8px 12px; background: white; border: 1px solid var(--border-light); 
-                    border-radius: 4px; margin-bottom: 6px; font-size: 13px; color: var(--text-secondary); }
-    .preview-item:last-child { margin-bottom: 0; }
-    .preview-item:only-child { margin-bottom: 0; }
-    .preview-count { display: inline-block; background: var(--primary-light); color: var(--primary); 
-                     padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; margin-left: 8px; }
-    
-    .config-column-header { padding: 16px; background: var(--bg-light); border-bottom: 2px solid var(--border); 
-                            font-size: 14px; font-weight: 600; color: var(--text); position: sticky; top: 0; z-index: 10; }
+    .config-column-item { min-width: 280px; max-width: 350px; border-right: 1px solid var(--border-light); display: flex; flex-direction: column; overflow-y: auto; }
+    .config-column-header { padding: 16px; background: var(--bg-light); border-bottom: 2px solid var(--border); font-weight: 600; position: sticky; top: 0; z-index: 10; }
     .config-column-body { padding: 20px; flex: 1; }
     
-    .info-box { background: var(--primary-light); border-left: 4px solid var(--primary); padding: 12px 16px; 
-                border-radius: 4px; margin-bottom: 16px; font-size: 13px; color: var(--text); }
-    .info-box strong { color: var(--primary); }
+    .panel-section { padding: 20px; border-bottom: 1px solid var(--border); }
+    .section-title { font-size: 14px; font-weight: 600; }
     
+    /* Question chips with emoji selector */
+    .questions-list { max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; }
+    .question-chip { padding: 8px 12px 8px 8px; border-bottom: 1px solid var(--border-light); font-size: 12px; display: flex; align-items: flex-start; gap: 8px; }
+    .question-chip:hover { background: var(--bg-light); }
+    .question-chip-id { font-weight: 600; color: var(--primary); margin-bottom: 2px; }
+    .question-chip-text { color: var(--text-secondary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    
+    .group-selector { width: 50px; min-width: 50px; font-size: 18px; padding: 2px; text-align: center; cursor: pointer; border: 1px solid var(--border-light); flex-shrink: 0; }
+    
+    /* Facet modal */
+    .facet-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 2000; }
+    .facet-modal-overlay.active { display: flex; align-items: center; justify-content: center; }
+    .facet-modal { background: white; border-radius: 12px; width: 90vw; max-width: 900px; max-height: 85vh; display: flex; flex-direction: column; }
+    .facet-modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: #9c27b0; color: white; }
+    .facet-modal-content { padding: 24px; overflow-y: auto; flex: 1; }
+    .facet-controls { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+    .facet-item { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; background: white; }
+    .facet-item.modified { background: #fff3e0; border-color: #ff9800; }
+    .facet-item input[type="text"] { flex: 1; padding: 6px 10px; border: 1px solid var(--border-light); border-radius: 4px; font-size: 13px; }
+    .facet-count { min-width: 50px; text-align: right; font-size: 12px; color: var(--text-secondary); }
+    
+    .btn-facet { background: #9c27b0; color: white; }
+    .btn-facet:hover { background: #7b1fa2; }
+    
+    .preview-list { max-height: 300px; overflow-y: auto; }
+    .preview-item { padding: 8px 12px; background: white; border: 1px solid var(--border-light); border-radius: 4px; margin-bottom: 6px; font-size: 13px; }
+    .preview-count { display: inline-block; background: var(--primary-light); color: var(--primary); padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; margin-left: 8px; }
+    
+    .common-answer-item { padding: 8px 12px; border-bottom: 1px solid var(--border-light); font-size: 13px; cursor: pointer; }
+    .common-answer-item:hover { background: var(--bg-light); }
+    
+    /* Custom order */
+    .custom-order-list { border: 1px solid var(--border); border-radius: 4px; padding: 8px; background: var(--bg-light); max-height: 250px; overflow-y: auto; }
+    .custom-order-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; margin: 4px 0; background: white; border: 1px solid var(--border-light); border-radius: 3px; font-size: 12px; cursor: grab; transition: all 0.15s ease; }
+    .custom-order-item:active { cursor: grabbing; }
+    .custom-order-item.unchecked { opacity: 0.5; background: #f5f5f5; }
+    .custom-order-item.is-dragging { opacity: 0.4; border-style: dashed; background-color: #e0f2fe; }
+    .custom-order-item.drag-over { border-color: var(--primary); background-color: #dbeafe; transform: scale(1.02); }
+    .custom-order-item .drag-handle { cursor: grab; color: var(--text-secondary); padding: 0 4px; font-size: 14px; }
+    .custom-order-item .drag-handle:active { cursor: grabbing; }
+    .custom-order-item .item-checkbox { margin-right: 4px; cursor: pointer; width: 16px; height: 16px; flex-shrink: 0; }
+    .custom-order-item .item-text { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .custom-order-item .item-count { margin: 0 4px; padding: 2px 8px; background: var(--primary-light); color: var(--primary); border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+    .custom-order-item .item-controls { display: flex; gap: 2px; }
+    .btn-move { padding: 2px 6px; font-size: 14px; background: white; border: 1px solid var(--border); border-radius: 3px; cursor: pointer; min-width: 28px; }
+    .btn-move:hover:not(:disabled) { background: var(--bg-light); border-color: #999; }
+    .btn-move:disabled { opacity: 0.3; cursor: not-allowed; }
+    .custom-order-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .btn-counts { padding: 4px 12px; font-size: 12px; background: var(--success); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; }
+    .btn-counts:hover { background: #16803d; }
+    .btn-counts:disabled { opacity: 0.5; cursor: not-allowed; }
+    
+    .form-group { margin-bottom: 16px; }
+    .form-label { display: block; font-size: 13px; font-weight: 500; color: var(--text-secondary); margin-bottom: 6px; }
+    .form-select, .form-input, .form-textarea { width: 100%; padding: 8px 12px; border: 1px solid var(--border-light); border-radius: 4px; font-size: 14px; }
+    .form-checkbox { margin-right: 8px; }
+    .checkbox-label { display: flex; align-items: center; font-size: 14px; cursor: pointer; }
+
     [x-cloak] { display: none !important; }
   </style>
 </head>
 <body>
-  <div class="container" x-data="app()" x-cloak>
+  <?!= HtmlService.createHtmlOutputFromFile('SharedUtils').getContent(); ?>
+
+  <div class="container" x-data="questionConfigApp()" x-cloak>
     <!-- Header -->
     <div class="header">
-      <h1>Question Configuration</h1>
-      <div class="subtitle">Configure question types, chart types, and sorting for survey questions</div>
+      <h1 class="text-2xl font-normal mb-2">Question Configuration</h1>
+      <div class="text-sm opacity-90">Configure question types, chart types, and sorting for survey questions</div>
     </div>
     
     <!-- Messages -->
     <template x-for="(msg, idx) in messages" :key="idx">
       <div class="content" style="padding-bottom: 0;">
-        <div :class="'message message-' + msg.type" x-text="msg.text"></div>
+        <div class="p-3 rounded mb-2" :class="msg.type === 'error' ? 'bg-red-100 text-red-800' : msg.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'" x-text="msg.text"></div>
       </div>
     </template>
     
@@ -436,32 +127,42 @@
     <div class="content">
       <!-- Tabs -->
       <div class="tab-container">
-        <button class="tab" :class="{ active: currentTab === 'individual' }" @click="currentTab = 'individual'">
-          Individual Questions
-        </button>
-        <button class="tab" :class="{ active: currentTab === 'groups' }" @click="currentTab = 'groups'">
-          Question Groups
-        </button>
+        <button class="tab" :class="{ active: currentTab === 'individual' }" @click="currentTab = 'individual'">Individual Questions</button>
+        <button class="tab" :class="{ active: currentTab === 'groups' }" @click="currentTab = 'groups'">Linked Questions</button>
       </div>
       
-      <!-- Tab Content: Individual Questions -->
-      <div x-show="currentTab === 'individual'" class="tab-content" :class="{ active: currentTab === 'individual' }">
-        <div class="search-box">
-          <input type="text" x-model="searchTerm" placeholder="Search questions...">
+      <!-- Tab: Individual Questions -->
+      <div x-show="currentTab === 'individual'">
+        <div class="mb-4 flex gap-3 items-center">
+          <input type="text" x-model="searchTerm" class="input flex-1" placeholder="🔍 Search questions...">
+          <select x-model="configStatusFilter" class="form-select" style="width: 160px;" title="Filter by configuration status">
+            <option value="">All Status</option>
+            <option value="configured">✓ Configured</option>
+            <option value="unconfigured">○ Unconfigured</option>
+          </select>
+          <select x-model="yearFilter" class="form-select" style="width: 140px;" title="Filter by survey year">
+            <option value="">All Years</option>
+            <template x-for="year in availableYears" :key="year">
+              <option :value="year" x-text="year"></option>
+            </template>
+          </select>
         </div>
         
         <div class="question-list">
           <template x-for="q in filteredQuestions" :key="q.questionId">
             <div class="question-item">
-              <div class="question-info">
-                <div class="question-id" x-text="q.questionId"></div>
-                <div class="question-text" x-text="q.questionText"></div>
+              <div class="flex-1 min-w-0">
+                <div class="font-semibold text-primary text-sm" x-text="q.questionId"></div>
+                <div class="text-secondary text-sm truncate" x-text="q.questionText"></div>
               </div>
-              <div class="question-actions">
-                <span class="status-badge" 
-                      :class="isConfigured(q.questionId) ? 'status-configured' : 'status-unconfigured'"
+              <div class="flex gap-3 items-center ml-4">
+                <span x-show="currentConfig[q.questionId]?.colorGroup" 
+                      class="text-lg" 
+                      :title="'Color group: ' + (currentConfig[q.questionId]?.colorGroup || '')"
+                      x-text="currentConfig[q.questionId]?.colorGroup"></span>
+                <span class="badge" :class="isConfigured(q.questionId) ? 'badge-success' : 'badge-warning'"
                       x-text="isConfigured(q.questionId) ? 'Configured' : 'Unconfigured'"></span>
-                <button class="btn btn-primary btn-small" @click="openConfigModal(q.questionId)">
+                <button class="btn btn-primary btn-sm" @click="openConfigModal(q.questionId)">
                   <span x-text="isConfigured(q.questionId) ? 'Edit' : 'Configure'"></span>
                 </button>
               </div>
@@ -470,26 +171,23 @@
         </div>
       </div>
       
-      <!-- Tab Content: Question Groups -->
-      <div x-show="currentTab === 'groups'" class="tab-content" :class="{ active: currentTab === 'groups' }">
-        <div class="search-box">
-          <input type="text" x-model="groupSearchTerm" placeholder="Search groups...">
+      <!-- Tab: Linked Questions (groups of related questions across survey years) -->
+      <div x-show="currentTab === 'groups'">
+        <div class="mb-4">
+          <input type="text" x-model="linkedQuestionsSearchTerm" class="input" placeholder="🔍 Search linked question groups...">
         </div>
         
         <div class="question-list">
-          <template x-for="group in filteredGroups" :key="group.name">
+          <template x-for="group in filteredLinkedGroups" :key="group.name">
             <div class="question-item">
-              <div class="question-info">
-                <div class="question-id" x-text="group.name"></div>
-                <div class="question-text" x-text="group.questionIds.length + ' questions in group'"></div>
+              <div class="flex-1 min-w-0">
+                <div class="font-semibold text-primary text-sm" x-text="group.name"></div>
+                <div class="text-secondary text-sm" x-text="group.questionIds.length + ' linked questions'"></div>
               </div>
-              <div class="question-actions">
-                <span class="status-badge" 
-                      :class="isGroupConfigured(group.name) ? 'status-configured' : 'status-unconfigured'"
-                      x-text="getGroupStatus(group.name)"></span>
-                <button class="btn btn-primary btn-small" @click="openGroupModal(group.name)">
-                  Configure Group
-                </button>
+              <div class="flex gap-3 items-center ml-4">
+                <span class="badge" :class="isLinkedGroupConfigured(group.name) ? 'badge-success' : 'badge-warning'"
+                      x-text="getLinkedGroupStatus(group.name)"></span>
+                <button class="btn btn-primary btn-sm" @click="openLinkedQuestionsModal(group.name)">Configure Linked Questions</button>
               </div>
             </div>
           </template>
@@ -497,26 +195,26 @@
       </div>
       
       <!-- Action Buttons -->
-      <div class="action-buttons">
+      <div class="flex gap-3 mt-6 pt-4 border-t">
         <button class="btn btn-secondary" @click="uploadConfig()" :disabled="Object.keys(currentConfig).length === 0">
           Upload to Database
         </button>
       </div>
     </div>
     
-    <!-- Individual Question Config Modal -->
+    <!-- ============== Individual Question Config Modal ============== -->
     <div class="modal-overlay" :class="{ active: showConfigModal }" @click="closeModalIfBackdrop($event)">
       <div class="modal" @click.stop>
         <div class="modal-header">
-          <h2 x-text="'Configure: ' + (editingQuestion ? editingQuestion.questionId : '')"></h2>
+          <h2 class="text-lg font-medium" x-text="'Configure: ' + (editingQuestion ? editingQuestion.questionId : '')"></h2>
         </div>
         <div class="modal-content">
-          <div class="config-column">
+          <div class="flex-1">
             <template x-if="editingQuestion">
               <div>
-                <div class="info-box">
-                  <strong x-text="editingQuestion.questionId"></strong><br>
-                  <span x-text="editingQuestion.questionText"></span>
+                <div class="bg-primary-light border-l-4 border-primary p-4 rounded mb-4">
+                  <strong class="text-primary" x-text="editingQuestion.questionId"></strong><br>
+                  <span class="text-sm" x-text="editingQuestion.questionText"></span>
                 </div>
                 
                 <div class="form-group">
@@ -556,109 +254,164 @@
                   </label>
                 </div>
                 
-                <template x-for="sortCtx in [{
-                  label: 'Desktop',
-                  platform: 'desktop',
-                  modelKey: 'sortType',
-                  firstOption: { value: 'none', text: 'none' },
-                  isIndividual: true
-                }, {
-                  label: 'Mobile',
-                  platform: 'mobile',
-                  modelKey: 'sortTypeMobile',
-                  firstOption: { value: '', text: 'Same as desktop' },
-                  isIndividual: true
-                }]" :key="sortCtx.platform">
-                  <div>
-                    <div class="form-group">
-                      <label class="form-label" x-text="`Sort Type (${sortCtx.label})`"></label>
-                      <select class="form-select" 
-                              x-model="editingConfig[sortCtx.modelKey]" 
-                              @change="onSortTypeChange(sortCtx.platform)">
-                        <option :value="sortCtx.firstOption.value" x-text="sortCtx.firstOption.text"></option>
-                        <option value="alphabetical">alphabetical</option>
-                        <option value="frequency_desc">frequency_desc</option>
-                        <option value="frequency_asc">frequency_asc</option>
-                        <option value="ordinal">ordinal</option>
-                        <option value="height">height</option>
-                        <option value="custom">custom</option>
-                      </select>
+                <div class="form-group">
+                  <label class="form-label">Color Group</label>
+                  <div class="flex items-center gap-2">
+                    <select class="form-select" x-model="editingConfig.colorGroup" style="width: auto; min-width: 80px;">
+                      <option value="">None</option>
+                      <template x-for="emoji in colorGroupEmojis" :key="emoji">
+                        <option :value="emoji" x-text="emoji"></option>
+                      </template>
+                    </select>
+                    <span class="text-xs text-secondary">Assign to a color group for filtering</span>
+                  </div>
+                </div>
+                
+                <div class="form-group">
+                  <label class="form-label">Sort Type (Desktop)</label>
+                  <select class="form-select" x-model="editingConfig.sortType" @change="onSortTypeChange('desktop')">
+                    <option value="none">none</option>
+                    <option value="alphabetical">alphabetical</option>
+                    <option value="frequency_desc">frequency_desc</option>
+                    <option value="frequency_asc">frequency_asc</option>
+                    <option value="ordinal">ordinal</option>
+                    <option value="height">height</option>
+                    <option value="custom">custom</option>
+                  </select>
+                </div>
+                
+                <template x-if="editingConfig.sortType === 'custom'">
+                  <div class="form-group">
+                    <div class="custom-order-header">
+                      <label class="form-label" style="margin-bottom: 0;">
+                        Custom Order (Desktop)
+                        <span class="text-xs text-secondary ml-1" x-show="getIndividualCustomOrderItemsWithMeta('desktop').length > 0" 
+                              x-text="'(' + getIndividualCustomOrderItemsWithMeta('desktop').filter(i => i.checked).length + '/' + getIndividualCustomOrderItemsWithMeta('desktop').length + ' selected)'"></span>
+                      </label>
+                      <button class="btn-counts" @click="toggleIndividualCheckboxes('desktop')" :disabled="loadingAnswers || getIndividualCustomOrderItemsWithMeta('desktop').length === 0">
+                        <span x-text="getToggleButtonText('individual_desktop')"></span>
+                      </button>
                     </div>
-                    
-                    <template x-if="editingConfig[sortCtx.modelKey] === 'custom'">
-                      <div class="form-group">
-                        <div class="custom-order-header">
-                          <label class="form-label" style="margin-bottom: 0;" x-text="`Custom Order (${sortCtx.label})`"></label>
-                          <button class="btn-counts" 
-                                  @click="toggleIndividualCheckboxes(sortCtx.platform)" 
-                                  :disabled="loadingAnswers">
-                            <span x-text="getToggleButtonText('individual_' + sortCtx.platform)"></span>
-                          </button>
+                    <p class="text-xs text-secondary mb-2">Checked values will be saved. Unchecked values will be grouped as "Other".</p>
+                    <div class="custom-order-list">
+                      <template x-if="loadingAnswers">
+                        <div class="text-center p-4"><div class="spinner spinner-sm mx-auto"></div><p class="text-xs text-secondary mt-1">Loading answers...</p></div>
+                      </template>
+                      <template x-if="!loadingAnswers && getIndividualCustomOrderItemsWithMeta('desktop').length === 0">
+                        <div class="text-center p-4 text-secondary text-sm">No values loaded. Click "Refresh Answers" to load.</div>
+                      </template>
+                      <template x-for="(item, index) in getIndividualCustomOrderItemsWithMeta('desktop')" :key="item.value">
+                        <div class="custom-order-item" 
+                             :class="{ unchecked: !item.checked, 'is-dragging': dragState.dragging && dragState.dragIndex === index && dragState.context === 'individual_desktop', 'drag-over': dragState.dragOverIndex === index && dragState.context === 'individual_desktop' }"
+                             draggable="true"
+                             @dragstart="handleDragStart($event, index, 'individual_desktop')"
+                             @dragend="handleDragEnd($event)"
+                             @dragover.prevent="handleDragOver($event, index, 'individual_desktop')"
+                             @dragleave="handleDragLeave($event)"
+                             @drop="handleDrop($event, index, 'individual_desktop')">
+                          <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
+                          <input type="checkbox" class="item-checkbox" :checked="item.checked" @change="toggleIndividualCustomOrderItem('desktop', index)" @click.stop title="Check to include in saved config, uncheck to group as 'Other'">
+                          <span class="item-text" :title="item.value" x-text="item.value"></span>
+                          <span class="item-count" x-show="item.count !== undefined" x-text="item.count" title="Response count"></span>
+                          <div class="item-controls">
+                            <button class="btn-move" @click.prevent.stop="moveIndividualCustomOrderItem('desktop', index, 'top')" :disabled="index === 0" title="Move to top">⇈</button>
+                            <button class="btn-move" @click.prevent.stop="moveIndividualCustomOrderItem('desktop', index, 'up')" :disabled="index === 0" title="Move up">↑</button>
+                            <button class="btn-move" @click.prevent.stop="moveIndividualCustomOrderItem('desktop', index, 'down')" :disabled="index === getIndividualCustomOrderItemsWithMeta('desktop').length - 1" title="Move down">↓</button>
+                            <button class="btn-move" @click.prevent.stop="moveIndividualCustomOrderItem('desktop', index, 'bottom')" :disabled="index === getIndividualCustomOrderItemsWithMeta('desktop').length - 1" title="Move to bottom">⇊</button>
+                          </div>
                         </div>
-                        <div class="custom-order-list">
-                          <template x-for="(item, index) in getIndividualCustomOrderItemsWithMeta(sortCtx.platform)" :key="index">
-                            <div class="custom-order-item" :class="{ unchecked: !item.checked }">
-                              <input type="checkbox" class="item-checkbox" 
-                                     :checked="item.checked"
-                                     @change="toggleIndividualCustomOrderItem(sortCtx.platform, index)">
-                              <span class="item-text" x-text="item.value"></span>
-                              <span class="item-count" x-show="item.count !== undefined" x-text="item.count"></span>
-                              <div class="item-controls">
-                                <button @click.prevent="moveIndividualCustomOrderItem(sortCtx.platform, index, 'top')" 
-                                        :disabled="index === 0" class="btn-move" title="Move to top">⇈</button>
-                                <button @click.prevent="moveIndividualCustomOrderItem(sortCtx.platform, index, 'up')" 
-                                        :disabled="index === 0" class="btn-move" title="Move up">↑</button>
-                                <button @click.prevent="moveIndividualCustomOrderItem(sortCtx.platform, index, 'down')" 
-                                        :disabled="index === getIndividualCustomOrderItemsWithMeta(sortCtx.platform).length - 1" 
-                                        class="btn-move" title="Move down">↓</button>
-                                <button @click.prevent="moveIndividualCustomOrderItem(sortCtx.platform, index, 'bottom')" 
-                                        :disabled="index === getIndividualCustomOrderItemsWithMeta(sortCtx.platform).length - 1" 
-                                        class="btn-move" title="Move to bottom">⇊</button>
-                              </div>
-                            </div>
-                          </template>
-                          <button class="btn btn-secondary btn-small" 
-                                  @click="loadAnswersToIndividualCustomOrder(sortCtx.platform)"
-                                  style="margin-top: 8px; width: 100%;">
-                            Load Answers from This Question
-                          </button>
-                        </div>
-                      </div>
-                    </template>
+                      </template>
+                      <button class="btn btn-secondary btn-sm w-full mt-2" @click="loadAnswersToIndividualCustomOrder('desktop')" :disabled="loadingAnswers">
+                        <span x-show="!loadingAnswers">↻ Refresh Answers from This Question</span>
+                        <span x-show="loadingAnswers">Loading...</span>
+                      </button>
+                    </div>
                   </div>
                 </template>
                 
-                <button class="btn btn-facet" @click="openTextFacetModal()" style="margin-top: 12px;">
-                  Open Text Faceting Tool
-                </button>
+                <div class="form-group">
+                  <label class="form-label">Sort Type (Mobile)</label>
+                  <select class="form-select" x-model="editingConfig.sortTypeMobile" @change="onSortTypeChange('mobile')">
+                    <option value="">Same as desktop</option>
+                    <option value="none">none</option>
+                    <option value="alphabetical">alphabetical</option>
+                    <option value="frequency_desc">frequency_desc</option>
+                    <option value="frequency_asc">frequency_asc</option>
+                    <option value="custom">custom</option>
+                  </select>
+                </div>
+                
+                <!-- Mobile Custom Order (when selected) -->
+                <template x-if="editingConfig.sortTypeMobile === 'custom'">
+                  <div class="form-group">
+                    <div class="custom-order-header">
+                      <label class="form-label" style="margin-bottom: 0;">
+                        Custom Order (Mobile)
+                        <span class="text-xs text-secondary ml-1" x-show="getIndividualCustomOrderItemsWithMeta('mobile').length > 0" 
+                              x-text="'(' + getIndividualCustomOrderItemsWithMeta('mobile').filter(i => i.checked).length + '/' + getIndividualCustomOrderItemsWithMeta('mobile').length + ' selected)'"></span>
+                      </label>
+                      <button class="btn-counts" @click="toggleIndividualCheckboxes('mobile')" :disabled="loadingAnswers || getIndividualCustomOrderItemsWithMeta('mobile').length === 0">
+                        <span x-text="getToggleButtonText('individual_mobile')"></span>
+                      </button>
+                    </div>
+                    <p class="text-xs text-secondary mb-2">Checked values will be saved. Unchecked values will be grouped as "Other".</p>
+                    <div class="custom-order-list">
+                      <template x-if="loadingAnswers">
+                        <div class="text-center p-4"><div class="spinner spinner-sm mx-auto"></div></div>
+                      </template>
+                      <template x-for="(item, index) in getIndividualCustomOrderItemsWithMeta('mobile')" :key="item.value">
+                        <div class="custom-order-item" 
+                             :class="{ unchecked: !item.checked, 'is-dragging': dragState.dragging && dragState.dragIndex === index && dragState.context === 'individual_mobile', 'drag-over': dragState.dragOverIndex === index && dragState.context === 'individual_mobile' }"
+                             draggable="true"
+                             @dragstart="handleDragStart($event, index, 'individual_mobile')"
+                             @dragend="handleDragEnd($event)"
+                             @dragover.prevent="handleDragOver($event, index, 'individual_mobile')"
+                             @dragleave="handleDragLeave($event)"
+                             @drop="handleDrop($event, index, 'individual_mobile')">
+                          <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
+                          <input type="checkbox" class="item-checkbox" :checked="item.checked" @change="toggleIndividualCustomOrderItem('mobile', index)" @click.stop>
+                          <span class="item-text" :title="item.value" x-text="item.value"></span>
+                          <span class="item-count" x-show="item.count !== undefined" x-text="item.count"></span>
+                          <div class="item-controls">
+                            <button class="btn-move" @click.prevent.stop="moveIndividualCustomOrderItem('mobile', index, 'top')" :disabled="index === 0" title="Move to top">⇈</button>
+                            <button class="btn-move" @click.prevent.stop="moveIndividualCustomOrderItem('mobile', index, 'up')" :disabled="index === 0" title="Move up">↑</button>
+                            <button class="btn-move" @click.prevent.stop="moveIndividualCustomOrderItem('mobile', index, 'down')" :disabled="index === getIndividualCustomOrderItemsWithMeta('mobile').length - 1" title="Move down">↓</button>
+                            <button class="btn-move" @click.prevent.stop="moveIndividualCustomOrderItem('mobile', index, 'bottom')" :disabled="index === getIndividualCustomOrderItemsWithMeta('mobile').length - 1" title="Move to bottom">⇊</button>
+                          </div>
+                        </div>
+                      </template>
+                      <button class="btn btn-secondary btn-sm w-full mt-2" @click="loadAnswersToIndividualCustomOrder('mobile')" :disabled="loadingAnswers">
+                        <span x-show="!loadingAnswers">↻ Refresh Answers</span>
+                        <span x-show="loadingAnswers">Loading...</span>
+                      </button>
+                    </div>
+                  </div>
+                </template>
+                
+                <button class="btn btn-facet mt-4" @click="openTextFacetModal()">Open Text Faceting Tool</button>
               </div>
             </template>
           </div>
           
-          <div class="preview-column">
-            <div class="preview-section">
-              <div class="preview-title">Answer Preview</div>
-              <template x-if="loadingAnswers">
-                <div style="text-align: center; padding: 20px;">
-                  <div class="spinner" style="margin: 0 auto;"></div>
-                </div>
-              </template>
-              <template x-if="!loadingAnswers">
-                <div class="preview-list">
-                  <template x-if="answerOptions.length === 0">
-                    <div class="preview-item" style="text-align: center; color: var(--text-light);">
-                      No answers found
-                    </div>
-                  </template>
-                  <template x-for="ans in answerOptions" :key="ans.value">
-                    <div class="preview-item">
-                      <span x-text="ans.value"></span>
-                      <span class="preview-count" x-text="ans.count"></span>
-                    </div>
-                  </template>
-                </div>
-              </template>
-            </div>
+          <!-- Answer Preview -->
+          <div class="w-80 flex-shrink-0">
+            <div class="text-xs font-semibold text-secondary uppercase tracking-wide mb-3">Answer Preview</div>
+            <template x-if="loadingAnswers">
+              <div class="text-center p-4"><div class="spinner mx-auto"></div></div>
+            </template>
+            <template x-if="!loadingAnswers">
+              <div class="preview-list">
+                <template x-if="answerOptions.length === 0">
+                  <div class="preview-item text-center text-secondary">No answers found</div>
+                </template>
+                <template x-for="ans in answerOptions" :key="ans.value">
+                  <div class="preview-item">
+                    <span x-text="ans.value"></span>
+                    <span class="preview-count" x-text="ans.count"></span>
+                  </div>
+                </template>
+              </div>
+            </template>
           </div>
         </div>
         <div class="modal-footer">
@@ -673,11 +426,13 @@
       </div>
     </div>
     
-    <!-- Group Config Modal -->
-    <div class="modal-overlay" :class="{ active: showGroupModal }" @click="closeGroupModalIfBackdrop($event)">
+    <!-- ============== Linked Questions Config Modal ============== -->
+    <!-- This modal allows batch configuration of linked questions (same question across survey years) -->
+    <!-- Questions are temporarily assigned to Color Groups for batch configuration -->
+    <div class="modal-overlay" :class="{ active: showLinkedQuestionsModal }" @click="closeLinkedQuestionsModalIfBackdrop($event)">
       <div class="modal wide" @click.stop>
         <div class="modal-header">
-          <h2 x-text="'Configure Group: ' + editingGroupName"></h2>
+          <h2 class="text-lg font-medium" x-text="'Configure Linked Questions: ' + editingLinkedGroupName"></h2>
         </div>
         <div class="modal-content" style="padding: 0;">
           <div class="config-container">
@@ -685,50 +440,34 @@
             <div class="left-panel">
               <!-- Answer Preview Section -->
               <div class="panel-section">
-                <div class="section-header">
+                <div class="flex justify-between items-center mb-3">
                   <span class="section-title">Answer Preview</span>
                 </div>
-                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-                  <div style="flex: 1; text-align: center; font-size: 13px; font-weight: 600; color: var(--text);">
-                    <span x-show="previewQuestionId" 
-                          x-text="(currentGroupQuestions.indexOf(previewQuestionId) + 1) + ' / ' + currentGroupQuestions.length"></span>
+                <div class="flex items-center gap-2 mb-3">
+                  <div class="flex-1 text-center text-sm font-semibold">
+                    <span x-show="previewQuestionId" x-text="(currentLinkedQuestions.indexOf(previewQuestionId) + 1) + ' / ' + currentLinkedQuestions.length"></span>
                     <span x-show="!previewQuestionId">Select a question</span>
                   </div>
                 </div>
-                <div style="display: flex; align-items: right; gap: 8px; margin-bottom: 12px;">
-                  <button class="btn btn-secondary btn-small" @click="navigatePreviewQuestion(-1)" 
-                          :disabled="!previewQuestionId || currentGroupQuestions.indexOf(previewQuestionId) === 0"
-                          style="padding: 4px 8px;">←</button>
-                  <button class="btn btn-secondary btn-small" @click="navigatePreviewQuestion(1)" 
-                          :disabled="!previewQuestionId || currentGroupQuestions.indexOf(previewQuestionId) === currentGroupQuestions.length - 1"
-                          style="padding: 4px 8px;">→</button>
+                <div class="flex gap-2 mb-3">
+                  <button class="btn btn-secondary btn-sm" @click="navigateLinkedQuestionPreview(-1)" 
+                          :disabled="!previewQuestionId || currentLinkedQuestions.indexOf(previewQuestionId) === 0">←</button>
+                  <button class="btn btn-secondary btn-sm" @click="navigateLinkedQuestionPreview(1)" 
+                          :disabled="!previewQuestionId || currentLinkedQuestions.indexOf(previewQuestionId) === currentLinkedQuestions.length - 1">→</button>
                 </div>
                 <template x-if="previewQuestionId">
-                  <div style="margin-bottom: 8px;">
-                    <div style="font-size: 12px; font-weight: 600; color: var(--primary); margin-bottom: 4px;" 
-                         x-text="previewQuestionId"></div>
-                    <div style="font-size: 11px; color: var(--text-secondary); padding: 6px; background: var(--bg-light); border-radius: 4px;" 
-                         x-text="getQuestionText(previewQuestionId)"></div>
+                  <div class="mb-2">
+                    <div class="text-xs font-semibold text-primary mb-1" x-text="previewQuestionId"></div>
+                    <div class="text-xs text-secondary p-2 bg-light rounded" x-text="getQuestionText(previewQuestionId)"></div>
                   </div>
                 </template>
-                <template x-if="loadingGroupPreview">
-                  <div style="text-align: center; padding: 20px;">
-                    <div class="spinner" style="margin: 0 auto; width: 24px; height: 24px; border-width: 3px;"></div>
-                    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 8px;">
-                      <span x-show="!previewQuestionId">Loading all answers...</span>
-                      <span x-show="previewQuestionId">Loading...</span>
-                    </div>
-                  </div>
+                <template x-if="loadingLinkedPreview">
+                  <div class="text-center p-4"><div class="spinner spinner-sm mx-auto"></div></div>
                 </template>
-                <template x-if="!loadingGroupPreview && previewQuestionId">
-                  <div class="preview-list">
-                    <template x-if="groupPreviewAnswers.length === 0">
-                      <div class="preview-item" style="text-align: center; color: var(--text-light);">
-                        No answers found
-                      </div>
-                    </template>
-                    <template x-for="ans in groupPreviewAnswers" :key="ans.value">
-                      <div class="preview-item">
+                <template x-if="!loadingLinkedPreview && previewQuestionId">
+                  <div class="preview-list" style="max-height: 150px;">
+                    <template x-for="ans in linkedQuestionPreviewAnswers" :key="ans.value">
+                      <div class="preview-item text-sm">
                         <span x-text="ans.value"></span>
                         <span class="preview-count" x-text="ans.count"></span>
                       </div>
@@ -736,29 +475,39 @@
                   </div>
                 </template>
                 <template x-if="previewQuestionId">
-                  <button class="btn btn-facet btn-small" @click="openGroupQuestionFacet()" 
-                          style="margin-top: 12px; width: 100%;">
-                    Facet This Question
-                  </button>
+                  <button class="btn btn-facet btn-sm w-full mt-3" @click="openLinkedQuestionFacet()">Facet This Question</button>
                 </template>
               </div>
               
-              <!-- Group Assignment Section -->
-              <div class="panel-section">
-                <div class="section-header">
-                  <span class="section-title">Assign Questions to Groups</span>
+              <!-- Color Group Assignment Section -->
+              <!-- Assign questions to color groups for batch configuration -->
+              <div class="panel-section" x-show="!reconcileMode">
+                <div class="flex justify-between items-center mb-2">
+                  <div class="section-title">Assign to Color Groups</div>
+                  <button class="btn btn-sm btn-secondary"
+                          @click="toggleReconcileMode()"
+                          title="Compare and merge individual question configs">
+                    🔍 Reconcile
+                  </button>
                 </div>
+                <p class="text-xs text-secondary mb-2">Group questions by color to apply the same chart configuration to multiple questions at once.</p>
+                
                 <div class="questions-list">
-                  <template x-for="qId in currentGroupQuestions" :key="qId">
+                  <template x-for="qId in currentLinkedQuestions" :key="qId">
                     <div class="question-chip">
-                      <select class="group-selector" :value="questionGroupAssignments[qId] || ''" 
-                              @change="assignQuestionToGroup(qId, $event.target.value)">
-                        <template x-for="emoji in groupEmojis" :key="emoji">
+                      <select class="group-selector" :value="tempColorGroupAssignments[qId] || ''" 
+                              @change="assignQuestionToColorGroup(qId, $event.target.value)">
+                        <template x-for="emoji in colorGroupEmojis" :key="emoji">
                           <option :value="emoji" x-text="emoji"></option>
                         </template>
                       </select>
-                      <div class="question-chip-content">
-                        <div class="question-chip-id" x-text="qId"></div>
+                      <div class="flex-1 min-w-0">
+                        <div class="question-chip-id flex items-center gap-1">
+                          <span x-text="qId"></span>
+                          <span x-show="currentConfig[qId]?.colorGroup" 
+                                class="text-xs bg-green-100 text-green-700 px-1 rounded"
+                                title="Has saved color group">✓</span>
+                        </div>
                         <div class="question-chip-text" x-text="getQuestionText(qId)"></div>
                       </div>
                     </div>
@@ -766,42 +515,49 @@
                 </div>
               </div>
               
+              <!-- Reconcile Mode: Simple question list -->
+              <div class="panel-section" x-show="reconcileMode">
+                <div class="flex justify-between items-center mb-2">
+                  <div class="section-title">Reconcile Mode</div>
+                  <button class="btn btn-sm btn-warning" @click="toggleReconcileMode()">
+                    ✕ Exit Reconcile
+                  </button>
+                </div>
+                <p class="text-xs text-warning mb-2">Compare configs across questions. Yellow = values differ. Click "Use" to apply a value to all questions.</p>
+                <div class="questions-list" style="max-height: 200px;">
+                  <template x-for="qId in currentLinkedQuestions" :key="'reconcile-list-' + qId">
+                    <div class="text-xs p-2 border-b" x-text="qId"></div>
+                  </template>
+                </div>
+              </div>
+              
               <!-- Common Answers Section -->
               <div class="panel-section">
-                <div class="section-header collapsible" @click="toggleComparison()">
+                <div class="flex justify-between items-center mb-3 cursor-pointer" @click="comparisonCollapsed = !comparisonCollapsed">
                   <span class="section-title">
                     Common Answers <span x-show="commonAnswers.length > 0" x-text="'(' + commonAnswers.length + ')'"></span>
                   </span>
-                  <div style="display: flex; align-items: center;">
-                    <span class="refresh-icon" :class="{ spinning: comparisonLoading }" 
-                          @click.stop="refreshComparison()" title="Refresh">↻</span>
-                    <span class="collapse-icon" :class="{ collapsed: comparisonCollapsed }">▼</span>
+                  <div class="flex items-center gap-2">
+                    <span class="cursor-pointer text-secondary" :class="{ 'animate-spin': comparisonLoading }" @click.stop="refreshComparison()">↻</span>
+                    <span class="text-secondary" x-text="comparisonCollapsed ? '▶' : '▼'"></span>
                   </div>
                 </div>
-                <div class="section-content" :class="{ collapsed: comparisonCollapsed }"
-                     :style="'max-height: ' + (comparisonCollapsed ? '0' : '400px')">
+                <div x-show="!comparisonCollapsed">
                   <template x-if="comparisonLoading">
-                    <div style="text-align: center; padding: 20px;">
-                      <div class="spinner" style="margin: 0 auto; width: 24px; height: 24px; border-width: 3px;"></div>
-                    </div>
+                    <div class="text-center p-4"><div class="spinner spinner-sm mx-auto"></div></div>
                   </template>
                   <template x-if="!comparisonLoading && comparisonData">
-                    <div style="padding: 8px 12px; margin-bottom: 8px; background: var(--primary-light); border-radius: 4px; font-size: 12px; color: var(--text);">
+                    <div class="p-2 mb-2 bg-primary-light rounded text-xs">
                       <strong>Match Analysis:</strong> <span x-text="getMatchSummary()"></span>
                     </div>
                   </template>
                   <template x-if="!comparisonLoading && commonAnswers.length === 0">
-                    <div style="padding: 12px; text-align: center; color: var(--text-light); font-size: 12px;">
-                      No common answers found
-                    </div>
+                    <div class="text-center p-3 text-secondary text-sm">No common answers found</div>
                   </template>
                   <template x-if="!comparisonLoading && commonAnswers.length > 0">
                     <div>
-                      <button class="btn btn-facet btn-small" @click="openGroupFacetModal()" 
-                              style="margin-bottom: 8px; width: 100%;">
-                        Facet All Questions Together
-                      </button>
-                      <div style="max-height: 250px; overflow-y: auto;">
+                      <button class="btn btn-facet btn-sm w-full mb-2" @click="openLinkedGroupFacetModal()">Facet All Questions Together</button>
+                      <div style="max-height: 150px; overflow-y: auto;">
                         <template x-for="ans in commonAnswers" :key="ans">
                           <div class="common-answer-item" @click="useCommonAnswer(ans)" x-text="ans"></div>
                         </template>
@@ -812,144 +568,340 @@
               </div>
             </div>
             
-            <!-- Right Panel - Config Columns -->
+            <!-- Right Panel - Configuration columns -->
             <div class="right-panel">
-              <div class="config-columns-container">
-                <template x-for="emoji in activeGroupEmojis" :key="emoji">
+              <!-- Normal Mode: Color Group Columns -->
+              <div class="config-columns-container" x-show="!reconcileMode">
+                <template x-for="emoji in activeColorGroupsInModal" :key="emoji">
                   <div class="config-column-item">
                     <div class="config-column-header">
-                      <span x-text="emoji + ' Group'"></span>
-                      <span style="font-size: 11px; opacity: 0.7; margin-left: 8px;" 
-                            x-text="'(' + getQuestionsForEmoji(emoji).length + ')'"></span>
+                      <span x-text="emoji + ' Color Group'"></span>
+                      <span class="text-xs opacity-70 ml-2" x-text="'(' + getQuestionsForColorGroup(emoji).length + ' questions)'"></span>
                     </div>
                     <div class="config-column-body">
-                      <template x-if="getQuestionsForEmoji(emoji).length === 0">
-                        <div style="text-align: center; color: var(--text-light); padding: 20px; font-size: 13px;">
-                          No questions assigned
+                      <div class="form-group">
+                        <label class="form-label">Question Type</label>
+                        <select class="form-select" x-model="tempColorGroupConfigs[emoji].questionType" @change="onColorGroupQuestionTypeChange(emoji)">
+                          <option value="">Select type...</option>
+                          <template x-for="type in questionTypes" :key="type">
+                            <option :value="type" x-text="type"></option>
+                          </template>
+                        </select>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Chart Type (Desktop)</label>
+                        <select class="form-select" x-model="tempColorGroupConfigs[emoji].chartType" :disabled="!tempColorGroupConfigs[emoji].questionType">
+                          <option value="">Select chart...</option>
+                          <template x-for="chart in getColorGroupAvailableCharts(emoji)" :key="chart">
+                            <option :value="chart" x-text="chart"></option>
+                          </template>
+                        </select>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Chart Type (Mobile)</label>
+                        <select class="form-select" x-model="tempColorGroupConfigs[emoji].mobileChartType" :disabled="!tempColorGroupConfigs[emoji].questionType">
+                          <option value="">Same as desktop</option>
+                          <template x-for="chart in getColorGroupAvailableCharts(emoji)" :key="chart">
+                            <option :value="chart" x-text="chart"></option>
+                          </template>
+                        </select>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="checkbox-label">
+                          <input type="checkbox" class="form-checkbox" x-model="tempColorGroupConfigs[emoji].hasOther">
+                          <span>Has "Other" option</span>
+                        </label>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Sort Type (Desktop)</label>
+                        <select class="form-select" x-model="tempColorGroupConfigs[emoji].sortType" @change="onColorGroupSortTypeChange(emoji, 'desktop')">
+                          <option value="none">none</option>
+                          <option value="alphabetical">alphabetical</option>
+                          <option value="frequency_desc">frequency_desc</option>
+                          <option value="frequency_asc">frequency_asc</option>
+                          <option value="ordinal">ordinal</option>
+                          <option value="height">height</option>
+                          <option value="custom">custom</option>
+                        </select>
+                      </div>
+                      
+                      <template x-if="tempColorGroupConfigs[emoji].sortType === 'custom'">
+                        <div class="form-group">
+                          <div class="custom-order-header">
+                            <label class="form-label" style="margin-bottom: 0;">
+                              Custom Order (Desktop)
+                              <span class="text-xs text-secondary ml-1" x-show="getCustomOrderItemsWithMeta(emoji, 'desktop').length > 0" 
+                                    x-text="'(' + getCustomOrderItemsWithMeta(emoji, 'desktop').filter(i => i.checked).length + '/' + getCustomOrderItemsWithMeta(emoji, 'desktop').length + ' selected)'"></span>
+                            </label>
+                            <div class="flex gap-1">
+                              <button class="btn-counts" @click="toggleColorGroupCheckboxes(emoji, 'desktop')" :disabled="loadingLinkedPreview || getCustomOrderItemsWithMeta(emoji, 'desktop').length === 0">
+                                <span x-text="getToggleButtonText(emoji + '_desktop')"></span>
+                              </button>
+                            </div>
+                          </div>
+                          <p class="text-xs text-secondary mb-2">Checked values will be saved. Unchecked values will be grouped as "Other".</p>
+                          <div class="custom-order-list">
+                            <template x-if="loadingLinkedPreview">
+                              <div class="text-center p-4"><div class="spinner spinner-sm mx-auto"></div><p class="text-xs text-secondary mt-1">Loading answers...</p></div>
+                            </template>
+                            <template x-if="!loadingLinkedPreview && getCustomOrderItemsWithMeta(emoji, 'desktop').length === 0">
+                              <div class="text-center p-4 text-secondary text-sm">No values loaded. Click "Refresh Answers" to load.</div>
+                            </template>
+                            <template x-for="(item, index) in getCustomOrderItemsWithMeta(emoji, 'desktop')" :key="item.value">
+                              <div class="custom-order-item" 
+                                   :class="{ unchecked: !item.checked, 'is-dragging': dragState.dragging && dragState.dragIndex === index && dragState.context === emoji + '_desktop', 'drag-over': dragState.dragOverIndex === index && dragState.context === emoji + '_desktop' }"
+                                   draggable="true"
+                                   @dragstart="handleDragStart($event, index, emoji + '_desktop')"
+                                   @dragend="handleDragEnd($event)"
+                                   @dragover.prevent="handleDragOver($event, index, emoji + '_desktop')"
+                                   @dragleave="handleDragLeave($event)"
+                                   @drop="handleDrop($event, index, emoji + '_desktop')">
+                                <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
+                                <input type="checkbox" class="item-checkbox" :checked="item.checked" @change="toggleCustomOrderItem(emoji, 'desktop', index)" @click.stop title="Check to include in saved config, uncheck to group as 'Other'">
+                                <span class="item-text" :title="item.value" x-text="item.value"></span>
+                                <span class="item-count" x-show="item.count !== undefined" x-text="item.count" title="Total responses across all questions in group"></span>
+                                <div class="item-controls">
+                                  <button class="btn-move" @click.prevent.stop="moveCustomOrderItem(emoji, 'desktop', index, 'top')" :disabled="index === 0" title="Move to top">⇈</button>
+                                  <button class="btn-move" @click.prevent.stop="moveCustomOrderItem(emoji, 'desktop', index, 'up')" :disabled="index === 0" title="Move up">↑</button>
+                                  <button class="btn-move" @click.prevent.stop="moveCustomOrderItem(emoji, 'desktop', index, 'down')" :disabled="index === getCustomOrderItemsWithMeta(emoji, 'desktop').length - 1" title="Move down">↓</button>
+                                  <button class="btn-move" @click.prevent.stop="moveCustomOrderItem(emoji, 'desktop', index, 'bottom')" :disabled="index === getCustomOrderItemsWithMeta(emoji, 'desktop').length - 1" title="Move to bottom">⇊</button>
+                                </div>
+                              </div>
+                            </template>
+                            <button class="btn btn-secondary btn-sm w-full mt-2" @click="loadAllAnswersToCustomOrder(emoji, 'desktop')" :disabled="loadingLinkedPreview">
+                              <span x-show="!loadingLinkedPreview">↻ Refresh Answers from All Questions</span>
+                              <span x-show="loadingLinkedPreview">Loading...</span>
+                            </button>
+                          </div>
                         </div>
                       </template>
-                      <template x-if="getQuestionsForEmoji(emoji).length > 0">
-                        <div>
-                          <div class="form-group">
-                            <label class="form-label">Question Type</label>
-                            <select class="form-select" x-model="groupConfigs[emoji].questionType" 
-                                    @change="onGroupQuestionTypeChange(emoji)">
-                              <option value="">Select type...</option>
-                              <template x-for="type in questionTypes" :key="type">
-                                <option :value="type" x-text="type"></option>
-                              </template>
-                            </select>
-                          </div>
-                          
-                          <div class="form-group">
-                            <label class="form-label">Chart Type (Desktop)</label>
-                            <select class="form-select" x-model="groupConfigs[emoji].chartType" 
-                                    :disabled="!groupConfigs[emoji].questionType">
-                              <option value="">Select chart...</option>
-                              <template x-for="chart in getGroupAvailableCharts(emoji)" :key="chart">
-                                <option :value="chart" x-text="chart"></option>
-                              </template>
-                            </select>
-                          </div>
-                          
-                          <div class="form-group">
-                            <label class="form-label">Chart Type (Mobile)</label>
-                            <select class="form-select" x-model="groupConfigs[emoji].mobileChartType" 
-                                    :disabled="!groupConfigs[emoji].questionType">
-                              <option value="">Same as desktop</option>
-                              <template x-for="chart in getGroupAvailableCharts(emoji)" :key="chart">
-                                <option :value="chart" x-text="chart"></option>
-                              </template>
-                            </select>
-                          </div>
-                          
-                          <div class="form-group">
-                            <label class="checkbox-label">
-                              <input type="checkbox" class="form-checkbox" x-model="groupConfigs[emoji].hasOther">
-                              <span>Has "Other" option</span>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Sort Type (Mobile)</label>
+                        <select class="form-select" x-model="tempColorGroupConfigs[emoji].sortTypeMobile" @change="onColorGroupSortTypeChange(emoji, 'mobile')">
+                          <option value="">Same as desktop</option>
+                          <option value="none">none</option>
+                          <option value="alphabetical">alphabetical</option>
+                          <option value="frequency_desc">frequency_desc</option>
+                          <option value="frequency_asc">frequency_asc</option>
+                          <option value="custom">custom</option>
+                        </select>
+                      </div>
+                      
+                      <!-- Mobile Custom Order (when selected) -->
+                      <template x-if="tempColorGroupConfigs[emoji].sortTypeMobile === 'custom'">
+                        <div class="form-group">
+                          <div class="custom-order-header">
+                            <label class="form-label" style="margin-bottom: 0;">
+                              Custom Order (Mobile)
+                              <span class="text-xs text-secondary ml-1" x-show="getCustomOrderItemsWithMeta(emoji, 'mobile').length > 0" 
+                                    x-text="'(' + getCustomOrderItemsWithMeta(emoji, 'mobile').filter(i => i.checked).length + '/' + getCustomOrderItemsWithMeta(emoji, 'mobile').length + ' selected)'"></span>
                             </label>
-                          </div>
-
-                          <template x-for="sortCtx in [{
-                            label: 'Desktop',
-                            platform: 'desktop',
-                            modelKey: 'sortType',
-                            customOrderKey: 'customOrder',
-                            firstOption: { value: 'none', text: 'none' },
-                            isGroup: true
-                          }, {
-                            label: 'Mobile',
-                            platform: 'mobile',
-                            modelKey: 'sortTypeMobile',
-                            customOrderKey: 'customOrderMobile',
-                            firstOption: { value: '', text: 'Same as desktop' },
-                            isGroup: true
-                          }]" :key="sortCtx.platform">
-                            <div>
-                              <div class="form-group">
-                                <label class="form-label" x-text="`Sort Type (${sortCtx.label})`"></label>
-                                <select class="form-select" 
-                                        x-model="groupConfigs[emoji][sortCtx.modelKey]"
-                                        @change="onGroupSortTypeChange(emoji, sortCtx.platform)">
-                                  <option :value="sortCtx.firstOption.value" x-text="sortCtx.firstOption.text"></option>
-                                  <option value="alphabetical">alphabetical</option>
-                                  <option value="frequency_desc">frequency_desc</option>
-                                  <option value="frequency_asc">frequency_asc</option>
-                                  <option value="ordinal">ordinal</option>
-                                  <option value="height">height</option>
-                                  <option value="custom">custom</option>
-                                </select>
-                              </div>
-                              
-                              <template x-if="groupConfigs[emoji][sortCtx.modelKey] === 'custom'">
-                                <div class="form-group">
-                                  <div class="custom-order-header">
-                                    <label class="form-label" style="margin-bottom: 0;" x-text="`Custom Order (${sortCtx.label})`"></label>
-                                    <button class="btn-counts" 
-                                            @click="toggleGroupCheckboxes(emoji, sortCtx.platform)" 
-                                            :disabled="loadingGroupPreview">
-                                      <span x-text="getToggleButtonText(emoji + '_' + sortCtx.platform)"></span>
-                                    </button>
-                                  </div>
-                                  <div class="custom-order-list">
-                                    <template x-for="(item, index) in getCustomOrderItemsWithMeta(emoji, sortCtx.platform)" :key="index">
-                                      <div class="custom-order-item" :class="{ unchecked: !item.checked }">
-                                        <input type="checkbox" class="item-checkbox" 
-                                               :checked="item.checked"
-                                               @change="toggleCustomOrderItem(emoji, sortCtx.platform, index)">
-                                        <span class="item-text" x-text="item.value"></span>
-                                        <span class="item-count" x-show="item.count !== undefined" x-text="item.count"></span>
-                                        <div class="item-controls">
-                                          <button @click.prevent="moveCustomOrderItem(emoji, sortCtx.platform, index, 'top')" 
-                                                  :disabled="index === 0" class="btn-move" title="Move to top">⇈</button>
-                                          <button @click.prevent="moveCustomOrderItem(emoji, sortCtx.platform, index, 'up')" 
-                                                  :disabled="index === 0" class="btn-move" title="Move up">↑</button>
-                                          <button @click.prevent="moveCustomOrderItem(emoji, sortCtx.platform, index, 'down')" 
-                                                  :disabled="index === getCustomOrderItemsWithMeta(emoji, sortCtx.platform).length - 1" 
-                                                  class="btn-move" title="Move down">↓</button>
-                                          <button @click.prevent="moveCustomOrderItem(emoji, sortCtx.platform, index, 'bottom')" 
-                                                  :disabled="index === getCustomOrderItemsWithMeta(emoji, sortCtx.platform).length - 1" 
-                                                  class="btn-move" title="Move to bottom">⇊</button>
-                                        </div>
-                                      </div>
-                                    </template>
-                                    <button class="btn btn-secondary btn-small" 
-                                            @click="loadAllAnswersToCustomOrder(emoji, sortCtx.platform)"
-                                            style="margin-top: 8px; width: 100%;">
-                                      Load All Unique Answers
-                                    </button>
-                                    <textarea class="form-textarea" 
-                                              x-model="groupConfigs[emoji][sortCtx.customOrderKey]" 
-                                              placeholder="Enter comma-separated values..." 
-                                              style="margin-top: 8px; font-size: 11px; min-height: 60px;"></textarea>
-                                  </div>
-                                </div>
-                              </template>
+                            <div class="flex gap-1">
+                              <button class="btn-counts" @click="toggleColorGroupCheckboxes(emoji, 'mobile')" :disabled="loadingLinkedPreview || getCustomOrderItemsWithMeta(emoji, 'mobile').length === 0">
+                                <span x-text="getToggleButtonText(emoji + '_mobile')"></span>
+                              </button>
                             </div>
-                          </template>
+                          </div>
+                          <p class="text-xs text-secondary mb-2">Checked values will be saved. Unchecked values will be grouped as "Other".</p>
+                          <div class="custom-order-list">
+                            <template x-if="loadingLinkedPreview">
+                              <div class="text-center p-4"><div class="spinner spinner-sm mx-auto"></div><p class="text-xs text-secondary mt-1">Loading answers...</p></div>
+                            </template>
+                            <template x-for="(item, index) in getCustomOrderItemsWithMeta(emoji, 'mobile')" :key="item.value">
+                              <div class="custom-order-item" 
+                                   :class="{ unchecked: !item.checked, 'is-dragging': dragState.dragging && dragState.dragIndex === index && dragState.context === emoji + '_mobile', 'drag-over': dragState.dragOverIndex === index && dragState.context === emoji + '_mobile' }"
+                                   draggable="true"
+                                   @dragstart="handleDragStart($event, index, emoji + '_mobile')"
+                                   @dragend="handleDragEnd($event)"
+                                   @dragover.prevent="handleDragOver($event, index, emoji + '_mobile')"
+                                   @dragleave="handleDragLeave($event)"
+                                   @drop="handleDrop($event, index, emoji + '_mobile')">
+                                <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
+                                <input type="checkbox" class="item-checkbox" :checked="item.checked" @change="toggleCustomOrderItem(emoji, 'mobile', index)" @click.stop>
+                                <span class="item-text" :title="item.value" x-text="item.value"></span>
+                                <span class="item-count" x-show="item.count !== undefined" x-text="item.count"></span>
+                                <div class="item-controls">
+                                  <button class="btn-move" @click.prevent.stop="moveCustomOrderItem(emoji, 'mobile', index, 'top')" :disabled="index === 0" title="Move to top">⇈</button>
+                                  <button class="btn-move" @click.prevent.stop="moveCustomOrderItem(emoji, 'mobile', index, 'up')" :disabled="index === 0" title="Move up">↑</button>
+                                  <button class="btn-move" @click.prevent.stop="moveCustomOrderItem(emoji, 'mobile', index, 'down')" :disabled="index === getCustomOrderItemsWithMeta(emoji, 'mobile').length - 1" title="Move down">↓</button>
+                                  <button class="btn-move" @click.prevent.stop="moveCustomOrderItem(emoji, 'mobile', index, 'bottom')" :disabled="index === getCustomOrderItemsWithMeta(emoji, 'mobile').length - 1" title="Move to bottom">⇊</button>
+                                </div>
+                              </div>
+                            </template>
+                            <button class="btn btn-secondary btn-sm w-full mt-2" @click="loadAllAnswersToCustomOrder(emoji, 'mobile')" :disabled="loadingLinkedPreview">
+                              <span x-show="!loadingLinkedPreview">↻ Refresh Answers from All Questions</span>
+                              <span x-show="loadingLinkedPreview">Loading...</span>
+                            </button>
+                          </div>
                         </div>
                       </template>
                     </div>
+                  </div>
+                </template>
+              </div>
+              
+              <!-- Reconcile Mode: One column per question with field-level comparison -->
+              <div class="config-columns-container" x-show="reconcileMode" style="gap: 8px;">
+                <template x-for="qId in currentLinkedQuestions" :key="'reconcile-col-' + qId">
+                  <div class="config-column-item" style="min-width: 220px; max-width: 280px;">
+                    <div class="config-column-header" style="padding: 8px 12px;">
+                      <div class="text-xs font-semibold truncate" :title="qId" x-text="qId"></div>
+                      <div class="text-xs opacity-70 truncate mt-1" :title="getQuestionText(qId)" x-text="getQuestionText(qId)"></div>
+                    </div>
+                    <template x-if="reconcileConfigs && reconcileConfigs[qId]">
+                      <div class="config-column-body" style="padding: 8px;">
+                        <!-- Question Type -->
+                        <div class="form-group" style="margin-bottom: 8px;">
+                          <div class="flex justify-between items-center mb-1">
+                            <label class="form-label text-xs" style="margin: 0;">Question Type</label>
+                            <button class="btn-merge" 
+                                    x-show="fieldHasDifference('questionType')"
+                                    @click="mergeFieldToAll(qId, 'questionType')"
+                                    title="Apply this value to all questions">Use</button>
+                          </div>
+                          <select class="form-select text-xs" 
+                                  :class="{ 'field-differs': questionFieldDiffers(qId, 'questionType') }"
+                                  x-model="reconcileConfigs[qId].questionType" 
+                                  @change="onReconcileQuestionTypeChange(qId)">
+                            <option value="">Select type...</option>
+                            <template x-for="type in questionTypes" :key="type">
+                              <option :value="type" x-text="type"></option>
+                            </template>
+                          </select>
+                        </div>
+                        
+                        <!-- Chart Type Desktop -->
+                        <div class="form-group" style="margin-bottom: 8px;">
+                          <div class="flex justify-between items-center mb-1">
+                            <label class="form-label text-xs" style="margin: 0;">Chart (Desktop)</label>
+                            <button class="btn-merge" 
+                                    x-show="fieldHasDifference('chartType')"
+                                    @click="mergeFieldToAll(qId, 'chartType')"
+                                    title="Apply this value to all questions">Use</button>
+                          </div>
+                          <select class="form-select text-xs"
+                                  :class="{ 'field-differs': questionFieldDiffers(qId, 'chartType') }"
+                                  x-model="reconcileConfigs[qId].chartType">
+                            <option value="">Select chart...</option>
+                            <template x-for="chart in getReconcileAvailableCharts(qId)" :key="chart">
+                              <option :value="chart" x-text="chart"></option>
+                            </template>
+                          </select>
+                        </div>
+                        
+                        <!-- Chart Type Mobile -->
+                        <div class="form-group" style="margin-bottom: 8px;">
+                          <div class="flex justify-between items-center mb-1">
+                            <label class="form-label text-xs" style="margin: 0;">Chart (Mobile)</label>
+                            <button class="btn-merge" 
+                                    x-show="fieldHasDifference('mobileChartType')"
+                                    @click="mergeFieldToAll(qId, 'mobileChartType')"
+                                    title="Apply this value to all questions">Use</button>
+                          </div>
+                          <select class="form-select text-xs"
+                                  :class="{ 'field-differs': questionFieldDiffers(qId, 'mobileChartType') }"
+                                  x-model="reconcileConfigs[qId].mobileChartType">
+                            <option value="">Same as desktop</option>
+                            <template x-for="chart in getReconcileAvailableCharts(qId)" :key="chart">
+                              <option :value="chart" x-text="chart"></option>
+                            </template>
+                          </select>
+                        </div>
+                        
+                        <!-- Has Other -->
+                        <div class="form-group" style="margin-bottom: 8px;">
+                          <div class="flex justify-between items-center">
+                            <label class="checkbox-label text-xs"
+                                   :class="{ 'field-differs': questionFieldDiffers(qId, 'hasOther') }">
+                              <input type="checkbox" class="form-checkbox" x-model="reconcileConfigs[qId].hasOther">
+                              <span>Has Other</span>
+                            </label>
+                            <button class="btn-merge" 
+                                    x-show="fieldHasDifference('hasOther')"
+                                    @click="mergeFieldToAll(qId, 'hasOther')"
+                                    title="Apply this value to all questions">Use</button>
+                          </div>
+                        </div>
+                        
+                        <!-- Sort Type Desktop -->
+                        <div class="form-group" style="margin-bottom: 8px;">
+                          <div class="flex justify-between items-center mb-1">
+                            <label class="form-label text-xs" style="margin: 0;">Sort (Desktop)</label>
+                            <button class="btn-merge" 
+                                    x-show="fieldHasDifference('sortType')"
+                                    @click="mergeFieldToAll(qId, 'sortType')"
+                                    title="Apply this value to all questions">Use</button>
+                          </div>
+                          <select class="form-select text-xs"
+                                  :class="{ 'field-differs': questionFieldDiffers(qId, 'sortType') }"
+                                  x-model="reconcileConfigs[qId].sortType">
+                            <option value="none">none</option>
+                            <option value="alphabetical">alphabetical</option>
+                            <option value="frequency_desc">frequency_desc</option>
+                            <option value="frequency_asc">frequency_asc</option>
+                            <option value="ordinal">ordinal</option>
+                            <option value="height">height</option>
+                            <option value="custom">custom</option>
+                          </select>
+                        </div>
+                        
+                        <!-- Sort Type Mobile -->
+                        <div class="form-group" style="margin-bottom: 8px;">
+                          <div class="flex justify-between items-center mb-1">
+                            <label class="form-label text-xs" style="margin: 0;">Sort (Mobile)</label>
+                            <button class="btn-merge" 
+                                    x-show="fieldHasDifference('sortTypeMobile')"
+                                    @click="mergeFieldToAll(qId, 'sortTypeMobile')"
+                                    title="Apply this value to all questions">Use</button>
+                          </div>
+                          <select class="form-select text-xs"
+                                  :class="{ 'field-differs': questionFieldDiffers(qId, 'sortTypeMobile') }"
+                                  x-model="reconcileConfigs[qId].sortTypeMobile">
+                            <option value="">Same as desktop</option>
+                            <option value="none">none</option>
+                            <option value="alphabetical">alphabetical</option>
+                            <option value="frequency_desc">frequency_desc</option>
+                            <option value="frequency_asc">frequency_asc</option>
+                            <option value="custom">custom</option>
+                          </select>
+                        </div>
+                        
+                        <!-- Custom Order Desktop -->
+                        <div class="form-group" style="margin-bottom: 8px;">
+                          <div class="flex justify-between items-center mb-1">
+                            <label class="form-label text-xs" style="margin: 0;">Custom Order</label>
+                            <button class="btn-merge" 
+                                    x-show="fieldHasDifference('customOrder')"
+                                    @click="mergeFieldToAll(qId, 'customOrder')"
+                                    title="Merge all custom orders together">Merge All</button>
+                          </div>
+                          <div class="text-xs p-2 rounded border"
+                               :class="{ 'field-differs': questionFieldDiffers(qId, 'customOrder') }"
+                               :title="reconcileConfigs[qId].customOrder || '(none)'"
+                               x-text="getReconcileFieldDisplay(qId, 'customOrder')"></div>
+                        </div>
+                        
+                        <!-- Custom Order Mobile -->
+                        <div class="form-group" style="margin-bottom: 8px;">
+                          <div class="flex justify-between items-center mb-1">
+                            <label class="form-label text-xs" style="margin: 0;">Custom Order (Mobile)</label>
+                            <button class="btn-merge" 
+                                    x-show="fieldHasDifference('customOrderMobile')"
+                                    @click="mergeFieldToAll(qId, 'customOrderMobile')"
+                                    title="Merge all custom orders together">Merge All</button>
+                          </div>
+                          <div class="text-xs p-2 rounded border"
+                               :class="{ 'field-differs': questionFieldDiffers(qId, 'customOrderMobile') }"
+                               :title="reconcileConfigs[qId].customOrderMobile || '(none)'"
+                               x-text="getReconcileFieldDisplay(qId, 'customOrderMobile')"></div>
+                        </div>
+                      </div>
+                    </template>
                   </div>
                 </template>
               </div>
@@ -957,1775 +909,92 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="closeGroupModal()">Cancel</button>
-          <template x-if="hasNextGroup()">
-            <button class="btn btn-primary" @click="saveGroupAndNext()">Save & Next Group</button>
+          <button class="btn btn-secondary" @click="closeLinkedQuestionsModal()">Cancel</button>
+          <template x-if="!reconcileMode">
+            <template x-if="hasNextLinkedGroup()">
+              <button class="btn btn-primary" @click="saveLinkedQuestionsAndNext()">Save & Next Group</button>
+            </template>
           </template>
-          <button class="btn btn-primary" @click="saveGroupConfig()">
-            <span x-text="hasNextGroup() ? 'Save & Close' : 'Save Configuration'"></span>
-          </button>
+          <template x-if="!reconcileMode">
+            <button class="btn btn-primary" @click="saveLinkedQuestionsConfig()">
+              <span x-text="hasNextLinkedGroup() ? 'Save & Close' : 'Save Configuration'"></span>
+            </button>
+          </template>
+          <template x-if="reconcileMode">
+            <button class="btn btn-primary" @click="applyReconcileChanges()">
+              Apply Reconciled Changes
+            </button>
+          </template>
         </div>
       </div>
     </div>
     
-    <!-- Text Faceting Modal -->
+    <!-- ============== Text Faceting Modal ============== -->
     <div class="facet-modal-overlay" :class="{ active: showFacetModal }" @click="closeFacetModalIfBackdrop($event)">
       <div class="facet-modal" @click.stop>
         <div class="facet-modal-header">
           <h2>
-            <span x-show="editingQuestion && editingQuestion.questionId !== editingGroupName">Text Faceting: </span>
-            <span x-show="editingQuestion && editingQuestion.questionId === editingGroupName">Group Faceting: </span>
+            <span x-show="editingQuestion && editingQuestion.questionId !== editingLinkedGroupName">Text Faceting: </span>
+            <span x-show="editingQuestion && editingQuestion.questionId === editingLinkedGroupName">Group Faceting: </span>
             <span x-text="editingQuestion ? editingQuestion.questionId : ''"></span>
           </h2>
-          <button class="close-btn" @click="closeFacetModal()">&times;</button>
+          <button class="text-white text-2xl hover:opacity-70" @click="closeFacetModal()">&times;</button>
         </div>
         <div class="facet-modal-content">
           <div class="facet-controls">
-            <input type="text" class="form-input facet-search" x-model="facetSearchTerm" 
-                   placeholder="Filter values...">
+            <input type="text" class="input" style="width: 200px;" x-model="facetSearchTerm" placeholder="Filter values...">
+            <label class="checkbox-label">
+              <input type="checkbox" class="form-checkbox" x-model="facetSplitByComma" @change="toggleFacetSplit()" :disabled="loadingFacetValues">
+              <span>Split by comma</span>
+            </label>
             <button class="btn btn-secondary" @click="loadFacetValues()">Refresh</button>
-            <button class="btn btn-primary" @click="applyFacetChanges()" 
-                    :disabled="Object.keys(facetPendingEdits).length === 0">
+            <button class="btn btn-primary" @click="applyFacetChanges()" :disabled="Object.keys(facetPendingEdits).length === 0">
               Apply <span x-text="Object.keys(facetPendingEdits).length"></span> Change(s)
             </button>
           </div>
           
-          <!-- Split by comma and sorting controls -->
-          <div style="border: 1px solid var(--border); border-radius: 6px; padding: 16px; margin-bottom: 16px; background: var(--bg-light);">
-            <div style="margin-bottom: 12px;">
-              <label class="checkbox-label">
-                <input type="checkbox" class="form-checkbox" x-model="facetSplitByComma" 
-                       @change="toggleFacetSplit()" :disabled="loadingFacetValues">
-                <span>Separate by comma (split array)</span>
-              </label>
-            </div>
-            
-            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-              <span style="font-size: 13px; font-weight: 600; color: var(--text);">Sort by:</span>
-              <button class="btn btn-secondary btn-emoji" @click="sortFacetValues('alphabetical')"
-                      :class="{ 'btn-primary': facetSortBy === 'alphabetical' }"
-                      title="Alphabetical">🔠</button>
-              <button class="btn btn-secondary btn-emoji" @click="sortFacetValues('numerical')"
-                      :class="{ 'btn-primary': facetSortBy === 'numerical' }"
-                      title="Numerical">🔢</button>
-              <button class="btn btn-secondary btn-emoji" @click="sortFacetValues('count')"
-                      :class="{ 'btn-primary': facetSortBy === 'count' }"
-                      title="By Count">🥇</button>
-            </div>
-            
-            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-              <span style="font-size: 13px; font-weight: 600; color: var(--text);">Apply to all:</span>
-              <button class="btn btn-secondary btn-small" @click="bulkApplyCaseChange('title')"
-                      :disabled="loadingFacetValues" title="Title Case" style="font-weight: 600;">Aa Aa</button>
-              <button class="btn btn-secondary btn-small" @click="bulkApplyCaseChange('upper')"
-                      :disabled="loadingFacetValues" title="UPPERCASE" style="font-weight: 600;">AA</button>
-              <button class="btn btn-secondary btn-small" @click="bulkApplyCaseChange('sentence')"
-                      :disabled="loadingFacetValues" title="Sentence case" style="font-weight: 600;">Aa aa</button>
-            </div>
+          <div class="flex gap-2 mb-4">
+            <button class="btn btn-sm" :class="facetSortBy === 'alphabetical' ? 'btn-primary' : 'btn-secondary'" @click="sortFacetValues('alphabetical')">A-Z</button>
+            <button class="btn btn-sm" :class="facetSortBy === 'count' ? 'btn-primary' : 'btn-secondary'" @click="sortFacetValues('count')">Count</button>
+            <button class="btn btn-sm" :class="facetSortBy === 'numerical' ? 'btn-primary' : 'btn-secondary'" @click="sortFacetValues('numerical')">Numerical</button>
+            <span class="border-l mx-2"></span>
+            <button class="btn btn-secondary btn-sm" @click="bulkApplyCaseChange('sentence')">Sentence All</button>
+            <button class="btn btn-secondary btn-sm" @click="bulkApplyCaseChange('title')">Title All</button>
           </div>
           
           <template x-if="loadingFacetValues">
-            <div style="text-align: center; padding: 40px;">
-              <div class="spinner" style="margin: 0 auto;"></div>
-              <div class="loading-text">Loading values...</div>
-            </div>
+            <div class="text-center p-8"><div class="spinner mx-auto"></div><p class="text-secondary mt-2">Loading values...</p></div>
           </template>
           
-          <template x-if="!loadingFacetValues">
-            <div class="facet-values-list">
-              <template x-if="filteredFacetValues.length === 0">
-                <div class="facet-value-item" style="justify-content: center; color: var(--text-light);">
-                  No values found
+          <div x-show="!loadingFacetValues" style="max-height: 400px; overflow-y: auto;">
+            <template x-for="item in filteredFacetValues" :key="item.value">
+              <div class="facet-item" :class="{ modified: facetPendingEdits[item.value] !== undefined }">
+                <span class="facet-count" x-text="item.count"></span>
+                <input type="text" 
+                       :value="facetPendingEdits[item.value] !== undefined ? facetPendingEdits[item.value] : item.value"
+                       @input="updateFacetEdit(item.value, $event.target.value)">
+                <div class="flex gap-1">
+                  <button class="btn btn-secondary btn-sm" @click="applyCaseToValue(item.value, 'upper')" title="UPPER">AA</button>
+                  <button class="btn btn-secondary btn-sm" @click="applyCaseToValue(item.value, 'title')" title="Title">Aa</button>
+                  <button class="btn btn-secondary btn-sm" @click="applyCaseToValue(item.value, 'sentence')" title="Sentence">Aa.</button>
+                  <button class="btn btn-secondary btn-sm text-error" @click="updateFacetEdit(item.value, '')" title="Delete">×</button>
+                  <template x-if="facetPendingEdits[item.value] !== undefined">
+                    <button class="btn btn-secondary btn-sm" @click="restoreFacetValue(item.value)" title="Restore">↺</button>
+                  </template>
                 </div>
-              </template>
-              <template x-for="val in filteredFacetValues" :key="val.value">
-                <div class="facet-value-item">
-                  <input type="text" class="form-input" 
-                         :value="facetPendingEdits[val.value] !== undefined ? facetPendingEdits[val.value] : val.value"
-                         @change="updateFacetEdit(val.value, $event.target.value)"
-                         style="flex: 1; margin-right: 8px; font-size: 13px;">
-                  
-                  <!-- Per-value action buttons -->
-                  <div style="display: flex; gap: 4px; align-items: center;">
-                    <button class="btn btn-secondary btn-small" @click="applyCaseToValue(val.value, 'title')"
-                            title="Title Case" style="padding: 4px 8px; font-size: 11px; font-weight: 600;">Aa Aa</button>
-                    <button class="btn btn-secondary btn-small" @click="applyCaseToValue(val.value, 'upper')"
-                            title="UPPERCASE" style="padding: 4px 8px; font-size: 11px; font-weight: 600;">AA</button>
-                    <button class="btn btn-secondary btn-small" @click="applyCaseToValue(val.value, 'sentence')"
-                            title="Sentence case" style="padding: 4px 8px; font-size: 11px; font-weight: 600;">Aa aa</button>
-                    <button class="btn btn-secondary" @click="updateFacetEdit(val.value, '')"
-                            title="Delete" style="padding: 4px 8px; font-size: 16px; line-height: 1;">🧹</button>
-                    <button class="btn btn-secondary" @click="restoreFacetValue(val.value)"
-                            title="Restore" style="padding: 4px 8px; font-size: 16px; line-height: 1;color: green"
-                            :disabled="!facetPendingEdits.hasOwnProperty(val.value)">♻</button>
-                  </div>
-                  
-                  <span class="facet-value-count" x-text="val.count"></span>
-                </div>
-              </template>
-            </div>
-          </template>
+              </div>
+            </template>
+          </div>
         </div>
       </div>
     </div>
     
-    <!-- Loading Overlay -->
-    <div class="loading-overlay" :class="{ active: isLoading }">
+    <!-- Loader -->
+    <div x-show="isLoading" class="loader-overlay">
       <div class="spinner"></div>
-      <div class="loading-text" x-text="loadingText"></div>
     </div>
   </div>
-  
-  <script>
-    const server = new Proxy({}, {
-      get(target, prop) {
-        return (...args) => {
-          return new Promise((resolve, reject) => {
-            google.script.run
-              .withSuccessHandler(resolve)
-              .withFailureHandler(reject)
-              [prop](...args);
-          });
-        }
-      }
-    });
-    
-    function app() {
-      return {
-        // State
-        questions: [],
-        questionLinks: {},
-        currentConfig: {},
-        currentTab: 'individual',
-        searchTerm: '',
-        groupSearchTerm: '',
-        messages: [],
-        isLoading: true,
-        loadingText: 'Loading...',
-        
-        // Modal state
-        showConfigModal: false,
-        showGroupModal: false,
-        showFacetModal: false,
-        editingQuestion: null,
-        editingConfig: {},
-        loadingAnswers: false,
-        answerOptions: [],
-        
-        // Group modal state
-        editingGroupName: '',
-        currentGroupQuestions: [],
-        questionGroupAssignments: {},
-        groupConfigs: {},
-        customSortOrders: {},
-        allGroupNames: [],
-        currentGroupIndex: -1,
-        groupEmojis: ['🔴', '🟡', '🟢', '🔵', '🟣', '🟤', '⚫', '⚪', '🔶', '🟠'],
-        comparisonLoading: false,
-        comparisonCollapsed: false,
-        commonAnswers: [],
-        comparisonData: null,
-        comparisonDebounceTimer: null,
-        comparisonRequestId: 0,
-        previewQuestionId: '',
-        loadingGroupPreview: false,
-        groupPreviewAnswers: [],
-        previewNavigationTimer: null,
-        answerOptionsCache: {}, // Cache for preloaded answer options
-        customOrderChecked: {}, // Track which items are checked for each emoji/platform
-        customOrderToggleState: {}, // Track toggle state: 0=none, 1=all, 2=5+
-        customOrderCounts: {}, // Track counts for each answer value
-        
-        // Facet modal state
-        facetValues: [],
-        facetPendingEdits: {},
-        facetSearchTerm: '',
-        loadingFacetValues: false,
-        facetSplitByComma: false,
-        facetSortBy: 'alphabetical',
-        facetOriginalValues: {},
-        
-        // Cache for filteredQuestions
-        _filteredQuestionsCache: null,
-        _filteredQuestionsCacheKey: '',
-        
-        // Constants
-        questionTypes: [
-          'Yes No N/A', 'Numerical input', 'Numerical (Pre-binned)', 
-          'Multiple Choice (Numerical)', 'Multiple Choice', 'Text input', 
-          'Height', '1-5 Scale', 'Country', 'State/Province', 'Array (comma-separated)'
-        ],
-        chartCompatibility: {
-          'Yes No N/A': ['table', 'bar', 'column', 'pie', 'doughnut', 'polarArea'],
-          'Numerical input': ['table', 'histogram', 'line', 'scatter', 'boxPlot'],
-          'Numerical (Pre-binned)': ['table', 'bar', 'column', 'line', 'area'],
-          'Multiple Choice (Numerical)': ['table', 'bar', 'column', 'pie', 'doughnut', 'radar'],
-          'Multiple Choice': ['table', 'bar', 'column', 'pie', 'doughnut', 'pictogram'],
-          'Text input': ['table', 'word_cloud'],
-          'Height': ['table', 'histogram', 'age_pyramid'],
-          '1-5 Scale': ['table', 'bar', 'column', 'radar', 'line'],
-          'Country': ['table', 'country_map', 'bar', 'pie'],
-          'State/Province': ['table', 'state_map', 'bar', 'pie'],
-          'Array (comma-separated)': ['table', 'bar', 'column', 'radar', 'chord']
-        },
-        
-        // Computed
-        // Computed
-        get filteredQuestions() {
-          const cacheKey = `${this.searchTerm}:${this.questions.length}:${Object.keys(this.currentConfig).length}`;
-          
-          if (this._filteredQuestionsCacheKey === cacheKey && this._filteredQuestionsCache) {
-            return this._filteredQuestionsCache;
-          }
-          
-          let filtered = this.searchTerm ? 
-            this.questions.filter(q => 
-              q.questionId.toLowerCase().includes(this.searchTerm.toLowerCase()) || 
-              q.questionText.toLowerCase().includes(this.searchTerm.toLowerCase())
-            ) : [...this.questions];
-          
-          // Filter out questions with no answers (if answerCount property exists)
-          filtered = filtered.filter(q => !q.hasOwnProperty('answerCount') || q.answerCount > 0);
-          
-          // Sort: unconfigured first, then configured
-          const sorted = filtered.sort((a, b) => {
-            const aConfigured = this.isConfigured(a.questionId);
-            const bConfigured = this.isConfigured(b.questionId);
-            if (aConfigured === bConfigured) return 0;
-            return aConfigured ? 1 : -1;
-          });
-          
-          this._filteredQuestionsCache = sorted;
-          this._filteredQuestionsCacheKey = cacheKey;
-          return sorted;
-        },
-        
-        get groups() {
-          return Object.entries(this.questionLinks).map(([name, questionIds]) => ({
-            name,
-            questionIds
-          }));
-        },
-        
-        get filteredGroups() {
-          let filtered = this.groupSearchTerm ? 
-            this.groups.filter(g => g.name.toLowerCase().includes(this.groupSearchTerm.toLowerCase())) :
-            [...this.groups];
-          
-          // Sort: unconfigured/partially configured first, then fully configured
-          return filtered.sort((a, b) => {
-            const aConfigured = this.isGroupConfigured(a.name);
-            const bConfigured = this.isGroupConfigured(b.name);
-            if (aConfigured === bConfigured) return 0;
-            return aConfigured ? 1 : -1;
-          });
-        },
-        
-        get availableCharts() {
-          if (!this.editingConfig.questionType) return [];
-          return this.chartCompatibility[this.editingConfig.questionType] || [];
-        },
 
-        get activeGroupEmojis() {
-          const used = new Set();
-          this.currentGroupQuestions.forEach(qId => {
-            const emoji = this.questionGroupAssignments[qId];
-            if (emoji) used.add(emoji);
-          });
-          return Array.from(used).sort((a, b) => 
-            this.groupEmojis.indexOf(a) - this.groupEmojis.indexOf(b)
-          );
-        },
-        
-        get filteredFacetValues() {
-          if (!this.facetSearchTerm) return this.facetValues;
-          const term = this.facetSearchTerm.toLowerCase();
-          return this.facetValues.filter(v => {
-            const currentValue = this.facetPendingEdits[v.value] !== undefined ? 
-              this.facetPendingEdits[v.value] : v.value;
-            return currentValue.toLowerCase().includes(term);
-          });
-        },
-        
-        // Init
-        async init() {
-          try {
-            const data = await server.getQuestionConfigData();
-            this.questions = data.questions;
-            this.questionLinks = data.links;
-            this.currentConfig = data.config;
-            this.isLoading = false;
-          } catch (err) {
-            this.showMessage('error', 'Failed to load data: ' + err);
-            this.isLoading = false;
-          }
-        },
-        
-        // Methods
-        isConfigured(questionId) {
-          const cfg = this.currentConfig[questionId];
-          return cfg && cfg.questionType && cfg.chartType;
-        },
-        
-        findNextUnconfiguredQuestion() {
-          const currentIndex = this.filteredQuestions.findIndex(q => q.questionId === this.editingQuestion?.questionId);
-          if (currentIndex === -1) return null;
-          
-          for (let i = currentIndex + 1; i < this.filteredQuestions.length; i++) {
-            if (!this.isConfigured(this.filteredQuestions[i].questionId)) {
-              return this.filteredQuestions[i];
-            }
-          }
-          return null;
-        },
-        
-        hasNextUnconfiguredQuestion() {
-          return this.findNextUnconfiguredQuestion() !== null;
-        },
-
-        isGroupConfigured(groupName) {
-          const qIds = this.questionLinks[groupName] || [];
-          if (qIds.length === 0) return false;
-          return qIds.every(qId => this.isConfigured(qId));
-        },
-        
-        getGroupStatus(groupName) {
-          const qIds = this.questionLinks[groupName] || [];
-          if (qIds.length === 0) return 'No questions';
-          const configured = qIds.filter(qId => this.isConfigured(qId)).length;
-          if (configured === 0) return 'Unconfigured';
-          if (configured === qIds.length) return 'Configured';
-          return `${configured}/${qIds.length} configured`;
-        },
-        
-        async openConfigModal(questionId) {
-          this.editingQuestion = this.questions.find(q => q.questionId === questionId);
-          if (!this.editingQuestion) return;
-          
-          this.editingConfig = this.currentConfig[questionId] ? 
-            JSON.parse(JSON.stringify(this.currentConfig[questionId])) :
-            {
-              questionType: '',
-              chartType: '',
-              mobileChartType: '',
-              hasOther: false,
-              sortType: 'none',
-              sortTypeMobile: '',
-              customOrder: '',
-              customOrderMobile: ''
-            };
-          
-          this.showConfigModal = true;
-          this.loadAnswerOptions(questionId);
-        },
-        
-        async loadAnswerOptions(questionId) {
-          this.loadingAnswers = true;
-          this.answerOptions = [];
-          
-          try {
-            const options = await server.getAnswerOptions(questionId);
-            this.answerOptions = options;
-          } catch (err) {
-            if (err.message && err.message.includes('429')) {
-              this.showMessage('error', 'Rate limit reached. Please wait a moment and try again.');
-            } else {
-              this.showMessage('error', 'Failed to load answers: ' + err);
-            }
-          }
-          
-          this.loadingAnswers = false;
-        },
-
-        getDefaultConfigForType(questionType) {
-          const defaults = {
-            'Yes No N/A': { chartType: 'pie', sortType: 'none' },
-            'State/Province': { chartType: 'state_map', sortType: 'none' },
-            'Numerical input': { chartType: 'histogram', sortType: 'ordinal' },
-            'Numerical (Pre-binned)': { chartType: 'histogram', sortType: 'ordinal' },
-            'Multiple Choice (Numerical)': { chartType: 'column', sortType: 'ordinal' },
-            'Multiple Choice': { chartType: 'bar', sortType: 'none' },
-            '1-5 Scale': { chartType: 'column', sortType: 'ordinal'},
-            'Text input': { chartType: 'word_cloud', sortType: 'none' },
-            'Height': { chartType: 'histogram', sortType: 'height' },
-            'Country': { chartType: 'country_map', sortType: 'none' },
-            'Array (comma-separated)': { charType: 'chord', mobileChartType: 'bar', sortType: 'custom'}
-          };
-          return defaults[questionType] || { chartType: '', sortType: 'none' };
-        },
-
-        onQuestionTypeChange() {
-          const available = this.availableCharts;
-          
-          // Apply default configuration
-          const defaults = this.getDefaultConfigForType(this.editingConfig.questionType);
-          if (defaults.chartType && available.includes(defaults.chartType)) {
-            this.editingConfig.chartType = defaults.chartType;
-          } else if (!available.includes(this.editingConfig.chartType)) {
-            this.editingConfig.chartType = '';
-          }
-          
-          // Apply default sort type
-          if (defaults.sortType) {
-            this.editingConfig.sortType = defaults.sortType;
-          }
-          
-          // Clear mobile chart if incompatible
-          if (this.editingConfig.mobileChartType && 
-              !available.includes(this.editingConfig.mobileChartType)) {
-            this.editingConfig.mobileChartType = '';
-          }
-        },
-        
-        async onSortTypeChange(platform) {
-          if (platform === 'desktop') {
-            if (this.editingConfig.sortType === 'custom') {
-              await this.loadAnswersToIndividualCustomOrder('desktop');
-            } else {
-              this.editingConfig.customOrder = '';
-            }
-          }
-          if (platform === 'mobile') {
-            if (this.editingConfig.sortTypeMobile === 'custom') {
-              await this.loadAnswersToIndividualCustomOrder('mobile');
-            } else {
-              this.editingConfig.customOrderMobile = '';
-            }
-          }
-        },
-        
-        closeModal() {
-          this.showConfigModal = false;
-          this.editingQuestion = null;
-          this.editingConfig = {};
-          this.answerOptions = [];
-          // Clear individual modal's custom order state
-          delete this.customOrderChecked['individual_desktop'];
-          delete this.customOrderChecked['individual_mobile'];
-        },
-        
-        closeModalIfBackdrop(e) {
-          if (e.target.classList.contains('modal-overlay')) {
-            this.closeModal();
-          }
-        },
-        
-        async saveConfig() {
-          if (!this.editingQuestion) return;
-          
-          if (!this.editingConfig.questionType || !this.editingConfig.chartType) {
-            this.showMessage('error', 'Please select both question type and chart type');
-            return;
-          }
-          
-          // Create a copy to filter unchecked items
-          const configToSave = { ...this.editingConfig };
-          
-          // Filter custom order to only include checked items (desktop)
-          if (configToSave.sortType === 'custom' && configToSave.customOrder) {
-            const desktopKey = 'individual_desktop';
-            if (this.customOrderChecked[desktopKey]) {
-              const items = configToSave.customOrder.split(',').map(s => s.trim()).filter(Boolean);
-              const checkedItems = items.filter(item => this.customOrderChecked[desktopKey][item] !== false);
-              configToSave.customOrder = checkedItems.join(', ');
-            }
-          }
-          
-          // Filter custom order to only include checked items (mobile)
-          if (configToSave.sortTypeMobile === 'custom' && configToSave.customOrderMobile) {
-            const mobileKey = 'individual_mobile';
-            if (this.customOrderChecked[mobileKey]) {
-              const items = configToSave.customOrderMobile.split(',').map(s => s.trim()).filter(Boolean);
-              const checkedItems = items.filter(item => this.customOrderChecked[mobileKey][item] !== false);
-              configToSave.customOrderMobile = checkedItems.join(', ');
-            }
-          }
-          
-          try {
-            this.currentConfig[this.editingQuestion.questionId] = { ...configToSave };
-            await server.saveConfigToSheet(this.editingQuestion.questionId, configToSave);
-            this.showMessage('success', 'Configuration saved');
-            this.closeModal();
-          } catch (err) {
-            this.showMessage('error', 'Failed to save: ' + err);
-          }
-        },
-
-        async saveConfigAndNext() {
-          if (!this.editingQuestion) return;
-          
-          if (!this.editingConfig.questionType || !this.editingConfig.chartType) {
-            this.showMessage('error', 'Please select both question type and chart type');
-            return;
-          }
-          
-          // Create a copy to filter unchecked items
-          const configToSave = { ...this.editingConfig };
-          
-          // Filter custom order to only include checked items (desktop)
-          if (configToSave.sortType === 'custom' && configToSave.customOrder) {
-            const desktopKey = 'individual_desktop';
-            if (this.customOrderChecked[desktopKey]) {
-              const items = configToSave.customOrder.split(',').map(s => s.trim()).filter(Boolean);
-              const checkedItems = items.filter(item => this.customOrderChecked[desktopKey][item] !== false);
-              configToSave.customOrder = checkedItems.join(', ');
-            }
-          }
-          
-          // Filter custom order to only include checked items (mobile)
-          if (configToSave.sortTypeMobile === 'custom' && configToSave.customOrderMobile) {
-            const mobileKey = 'individual_mobile';
-            if (this.customOrderChecked[mobileKey]) {
-              const items = configToSave.customOrderMobile.split(',').map(s => s.trim()).filter(Boolean);
-              const checkedItems = items.filter(item => this.customOrderChecked[mobileKey][item] !== false);
-              configToSave.customOrderMobile = checkedItems.join(', ');
-            }
-          }
-          
-          // Find next question BEFORE updating config (so list order doesn't change)
-          const nextQuestion = this.findNextUnconfiguredQuestion();
-          
-          try {
-            this.currentConfig[this.editingQuestion.questionId] = { ...configToSave };
-            await server.saveConfigToSheet(this.editingQuestion.questionId, configToSave);
-            this.showMessage('success', 'Configuration saved');
-            
-            if (nextQuestion) {
-              await this.openConfigModal(nextQuestion.questionId);
-            } else {
-              this.closeModal();
-            }
-          } catch (err) {
-            this.showMessage('error', 'Failed to save: ' + err);
-          }
-        },
-        
-        async openGroupModal(groupName) {
-          this.answerOptionsCache = {};
-          this.editingGroupName = groupName;
-          this.currentGroupQuestions = this.questionLinks[groupName] || [];
-          this.currentGroupIndex = this.groups.findIndex(g => g.name === groupName);
-          this.allGroupNames = this.groups.map(g => g.name);
-          
-          this.questionGroupAssignments = {};
-          this.groupConfigs = {};
-          
-          // Initialize empty configs
-          this.groupEmojis.forEach(emoji => {
-            this.groupConfigs[emoji] = {
-              questionType: '', chartType: '', mobileChartType: '', 
-              hasOther: false, sortType: 'none', sortTypeMobile: '', 
-              customOrder: '', customOrderMobile: ''
-            };
-          });
-
-          // Helper for strict config matching
-         const getConfigSignature = (cfg) => {
-            if (!cfg) return 'unconfigured';
-            // Exclude customOrder from signature for initial grouping
-            return `${cfg.questionType}|${cfg.chartType}|${cfg.mobileChartType}|${cfg.hasOther}|${cfg.sortType}|${cfg.sortTypeMobile}`;
-          };
-
-          // Helper to check if custom orders match (20% threshold)
-          const customOrdersMatch = (order1, order2) => {
-            if (!order1 && !order2) return true;
-            if (!order1 || !order2) return false;
-            
-            const list1 = order1.split(',').map(s => s.trim()).filter(Boolean);
-            const list2 = order2.split(',').map(s => s.trim()).filter(Boolean);
-            
-            if (list1.length === 0 && list2.length === 0) return true;
-            if (list1.length === 0 || list2.length === 0) return false;
-            
-            const set1 = new Set(list1);
-            const set2 = new Set(list2);
-            const matchCount = list1.filter(item => set2.has(item)).length;
-            const matchPercentage = (matchCount / list1.length) * 100;
-            
-            return matchPercentage >= 20;
-          };
-
-          // Group questions by their signatures
-          const configGroups = {};
-          let unconfiguredQuestions = [];
-
-          this.currentGroupQuestions.forEach(qId => {
-            const cfg = this.currentConfig[qId];
-            if (cfg && cfg.questionType) {
-              const sig = getConfigSignature(cfg);
-              if (!configGroups[sig]) configGroups[sig] = [];
-              configGroups[sig].push(qId);
-            } else {
-              unconfiguredQuestions.push(qId);
-            }
-          });
-
-          // Assign to Emojis
-          let emojiIndex = 0;
-          
-          // Assign configured groups
-          Object.keys(configGroups).forEach(sig => {
-            if (emojiIndex < this.groupEmojis.length) {
-              const emoji = this.groupEmojis[emojiIndex];
-              const qIds = configGroups[sig];
-              
-              qIds.forEach(qId => this.questionGroupAssignments[qId] = emoji);
-
-              // Load config from first question in group
-              const firstConfig = this.currentConfig[qIds[0]];
-              if (firstConfig) {
-                this.groupConfigs[emoji] = { ...firstConfig };
-              }
-              emojiIndex++;
-            } else {
-              // Overflow to last emoji
-              const emoji = this.groupEmojis[this.groupEmojis.length - 1];
-              configGroups[sig].forEach(qId => this.questionGroupAssignments[qId] = emoji);
-            }
-          });
-
-          // Assign unconfigured questions
-          if (unconfiguredQuestions.length > 0) {
-            const emoji = emojiIndex < this.groupEmojis.length ? 
-                          this.groupEmojis[emojiIndex] : 
-                          this.groupEmojis[this.groupEmojis.length - 1];
-            unconfiguredQuestions.forEach(qId => this.questionGroupAssignments[qId] = emoji);
-          }
-          
-          this.showGroupModal = true;
-          this.loadingGroupPreview = true;
-          this.groupPreviewAnswers = [];
-          this.refreshComparison();
-          await this.preloadGroupAnswerOptions();
-          
-          if (this.currentGroupQuestions.length > 0) {
-            this.previewQuestionId = this.currentGroupQuestions[0];
-            this.loadGroupQuestionPreview(); 
-          }
-        },
-        
-        getQuestionText(questionId) {
-          const q = this.questions.find(q => q.questionId === questionId);
-          return q ? q.questionText : '';
-        },
-        
-        getQuestionGroupColor(questionId) {
-          const emoji = this.questionGroupAssignments[questionId];
-          if (!emoji) return '#ccc';
-          const colors = {
-            '🔴': '#ef4444', '🟡': '#eab308', '🟢': '#22c55e',
-            '🔵': '#3b82f6', '🟣': '#a855f7', '🟤': '#92400e', '⚫': '#1f2937',
-            '⚪': '#d1d5db', '🔶': '#fb923c', '🟠': '#f97316'
-          };
-          return colors[emoji] || '#ccc';
-        },
-        
-        assignQuestionToGroup(questionId, emoji) {
-          this.questionGroupAssignments[questionId] = emoji;
-        },
-        
-        getQuestionsForEmoji(emoji) {
-          return this.currentGroupQuestions.filter(qId => 
-            this.questionGroupAssignments[qId] === emoji
-          );
-        },
-        
-        getGroupAvailableCharts(emoji) {
-          const config = this.groupConfigs[emoji];
-          if (!config.questionType) return [];
-          return this.chartCompatibility[config.questionType] || [];
-        },
-        
-        // Shared helper function
-      applyQuestionTypeDefaults(config, availableCharts) {
-        const defaults = this.getDefaultConfigForType(config.questionType);
-        
-        // Apply default chart type
-        if (defaults.chartType && availableCharts.includes(defaults.chartType)) {
-          config.chartType = defaults.chartType;
-        } else if (!availableCharts.includes(config.chartType)) {
-          config.chartType = '';
-        }
-        
-        // Apply default sort type
-        if (defaults.sortType) {
-          config.sortType = defaults.sortType;
-        }
-        
-        // Clear mobile chart if incompatible
-        if (config.mobileChartType && !availableCharts.includes(config.mobileChartType)) {
-          config.mobileChartType = '';
-        }
-      },
-
-      onQuestionTypeChange() {
-        this.applyQuestionTypeDefaults(this.editingConfig, this.availableCharts);
-      },        
-
-      onGroupQuestionTypeChange(emoji) {
-        this.applyQuestionTypeDefaults(
-          this.groupConfigs[emoji], 
-          this.getGroupAvailableCharts(emoji)
-        );
-      },
-        
-        toggleComparison() {
-          this.comparisonCollapsed = !this.comparisonCollapsed;
-        },
-        
-        async refreshComparison() {
-          if (this.currentGroupQuestions.length < 2) {
-            this.commonAnswers = [];
-            this.comparisonData = null;
-            return;
-          }
-          
-          this.comparisonLoading = true;
-          const requestId = ++this.comparisonRequestId;
-          
-          try {
-            const result = await server.compareQuestionAnswers(this.currentGroupQuestions);
-            
-            if (requestId !== this.comparisonRequestId) return;
-            
-            if (result._comparison) {
-              this.commonAnswers = result._comparison.commonAnswers || [];
-              this.comparisonData = result._comparison;
-            } else {
-              this.commonAnswers = [];
-              this.comparisonData = null;
-            }
-          } catch (err) {
-            if (requestId !== this.comparisonRequestId) return;
-            
-            if (err.message && err.message.includes('429')) {
-              this.showMessage('error', 'Rate limit reached. Comparison data unavailable.');
-            } else {
-              console.error('Comparison failed:', err);
-            }
-            this.commonAnswers = [];
-            this.comparisonData = null;
-          }
-          
-          this.comparisonLoading = false;
-        },
-        
-        getMatchSummary() {
-          if (!this.comparisonData) return '';
-          
-          const totalQuestions = this.comparisonData.totalQuestions || 0;
-          const commonCount = this.comparisonData.commonCount || 0;
-          
-          if (totalQuestions === 2 && this.comparisonData.pairwiseMatches) {
-            const pairKey = Object.keys(this.comparisonData.pairwiseMatches)[0];
-            if (pairKey) {
-              const match = this.comparisonData.pairwiseMatches[pairKey];
-              return `${match.matchPercentage}% match (${match.matchCount} common answers)`;
-            }
-          }
-          
-          return `${commonCount} answers common across all ${totalQuestions} questions`;
-        },
-        
-        navigatePreviewQuestion(direction) {
-          const currentIndex = this.currentGroupQuestions.indexOf(this.previewQuestionId);
-          if (currentIndex === -1) return;
-          
-          const newIndex = currentIndex + direction;
-          if (newIndex >= 0 && newIndex < this.currentGroupQuestions.length) {
-            this.previewQuestionId = this.currentGroupQuestions[newIndex];
-            
-            // Clear existing timer
-            if (this.previewNavigationTimer) {
-              clearTimeout(this.previewNavigationTimer);
-            }
-            
-            // Set loading state immediately
-            this.loadingGroupPreview = true;
-            this.groupPreviewAnswers = [];
-            
-            // Debounce the actual loading to prevent rapid requests
-            this.previewNavigationTimer = setTimeout(() => {
-              this.loadGroupQuestionPreview();
-            }, 400);
-          }
-        },
-        
-        openGroupQuestionFacet() {
-          if (!this.previewQuestionId) return;
-          
-          // Find the question object
-          this.editingQuestion = this.questions.find(q => q.questionId === this.previewQuestionId);
-          if (!this.editingQuestion) return;
-          
-          this.showFacetModal = true;
-          this.facetPendingEdits = {};
-          this.facetSearchTerm = '';
-          this.facetOriginalValues = {};
-          this.loadFacetValues();
-        },
-        
-        async openGroupFacetModal() {
-          // Create a pseudo-question for group faceting
-          this.editingQuestion = {
-            questionId: this.editingGroupName,
-            questionText: `Group: ${this.editingGroupName} (${this.currentGroupQuestions.length} questions)`
-          };
-          
-          this.showFacetModal = true;
-          this.facetPendingEdits = {};
-          this.facetSearchTerm = '';
-          this.facetOriginalValues = {};
-          
-          // Use the loadFacetValues function which now has built-in rate limiting for groups
-          await this.loadFacetValues();
-        },
-        
-        useCommonAnswer(answer) {
-          // Copy to clipboard or use in some way
-          navigator.clipboard.writeText(answer).then(() => {
-            this.showMessage('success', 'Copied to clipboard: ' + answer);
-          });
-        },
-        
-
-        // Enhanced custom order functions
-
-        // Individual question custom order functions
-
-        // Get toggle button text based on current state
-        getToggleButtonText(key) {
-          const state = this.customOrderToggleState[key] || 0;
-          switch(state) {
-            case 0: return 'Uncheck All';
-            case 1: return 'Check All';
-            case 2: return 'Check 5+';
-            default: return 'Toggle Checkboxes';
-          }
-        },
-        
-        // Toggle checkboxes for individual modal
-        toggleIndividualCheckboxes(platform) {
-          const key = `individual_${platform}`;
-          const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
-          const items = this.getCustomOrderArray(this.editingConfig[field]);
-          
-          if (items.length === 0) return;
-          
-          // Initialize state if needed
-          if (!this.customOrderToggleState[key]) {
-            this.customOrderToggleState[key] = 0;
-          }
-          
-          // Cycle through states: 0 (uncheck) → 1 (check all) → 2 (check 5+) → 0...
-          this.customOrderToggleState[key] = (this.customOrderToggleState[key] + 1) % 3;
-          const state = this.customOrderToggleState[key];
-          
-          if (!this.customOrderChecked[key]) {
-            this.customOrderChecked[key] = {};
-          }
-          
-          items.forEach(item => {
-            if (state === 0) {
-              // Uncheck all
-              this.customOrderChecked[key][item] = false;
-            } else if (state === 1) {
-              // Check all
-              this.customOrderChecked[key][item] = true;
-            } else if (state === 2) {
-              // Check only items with 5+ replies
-              const count = this.customOrderCounts[item] || 0;
-              this.customOrderChecked[key][item] = count >= 5;
-            }
-          });
-        },
-        
-        // Toggle checkboxes for group modal
-        toggleGroupCheckboxes(emoji, platform) {
-          const key = `${emoji}_${platform}`;
-          const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
-          const items = this.getCustomOrderArray(this.groupConfigs[emoji][field]);
-          
-          if (items.length === 0) return;
-          
-          // Initialize state if needed
-          if (!this.customOrderToggleState[key]) {
-            this.customOrderToggleState[key] = 0;
-          }
-          
-          // Cycle through states: 0 (uncheck) → 1 (check all) → 2 (check 5+) → 0...
-          this.customOrderToggleState[key] = (this.customOrderToggleState[key] + 1) % 3;
-          const state = this.customOrderToggleState[key];
-          
-          if (!this.customOrderChecked[key]) {
-            this.customOrderChecked[key] = {};
-          }
-          
-          items.forEach(item => {
-            if (state === 0) {
-              // Uncheck all
-              this.customOrderChecked[key][item] = false;
-            } else if (state === 1) {
-              // Check all
-              this.customOrderChecked[key][item] = true;
-            } else if (state === 2) {
-              // Check only items with 5+ replies
-              const count = this.customOrderCounts[item] || 0;
-              this.customOrderChecked[key][item] = count >= 5;
-            }
-          });
-        },
-
-        getIndividualCustomOrderItemsWithMeta(platform) {
-          const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
-          const orderString = this.editingConfig[field];
-          if (!orderString) return [];
-          
-          const items = orderString.split(',').map(s => s.trim()).filter(Boolean);
-          const key = `individual_${platform}`;
-          
-          // Initialize checked states if not exists
-          if (!this.customOrderChecked[key]) {
-            this.customOrderChecked[key] = {};
-            items.forEach(item => {
-              this.customOrderChecked[key][item] = true; // Default to checked
-            });
-          }
-          
-          // Return items with metadata
-          return items.map(value => ({
-            value: value,
-            checked: this.customOrderChecked[key][value] !== false,
-            count: this.customOrderCounts[value]
-          }));
-        },
-        
-        toggleIndividualCustomOrderItem(platform, index) {
-          const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
-          const items = this.getCustomOrderArray(this.editingConfig[field]);
-          const key = `individual_${platform}`;
-          
-          if (index >= 0 && index < items.length) {
-            const item = items[index];
-            if (!this.customOrderChecked[key]) {
-              this.customOrderChecked[key] = {};
-            }
-            this.customOrderChecked[key][item] = !this.customOrderChecked[key][item];
-          }
-        },
-        
-        moveIndividualCustomOrderItem(platform, index, direction) {
-          const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
-          const items = this.getCustomOrderArray(this.editingConfig[field]);
-          
-          if (items.length === 0) return;
-          
-          let newIndex = index;
-          if (direction === 'up') newIndex = Math.max(0, index - 1);
-          else if (direction === 'down') newIndex = Math.min(items.length - 1, index + 1);
-          else if (direction === 'top') newIndex = 0;
-          else if (direction === 'bottom') newIndex = items.length - 1;
-          
-          if (newIndex !== index) {
-            const [item] = items.splice(index, 1);
-            items.splice(newIndex, 0, item);
-            this.editingConfig[field] = items.join(', ');
-          }
-        },
-        
-        async loadAnswersToIndividualCustomOrder(platform) {
-          if (!this.editingQuestion || !this.editingQuestion.questionId) {
-            this.showMessage('error', 'No question selected');
-            return;
-          }
-          
-          this.loadingAnswers = true;
-          
-          try {
-            const options = await server.getAnswerOptions(this.editingQuestion.questionId);
-            const answerCounts = {};
-            
-            options.forEach(opt => {
-              answerCounts[opt.value] = opt.count;
-            });
-            
-            // Store counts
-            this.customOrderCounts = { ...this.customOrderCounts, ...answerCounts };
-            
-            // Sort by frequency (descending)
-            const sortedAnswers = options
-              .sort((a, b) => b.count - a.count)
-              .map(opt => opt.value);
-            
-            // Update the custom order field
-            const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
-            this.editingConfig[field] = sortedAnswers.join(', ');
-            
-            // Initialize checkboxes: check only items with 5+ replies
-            const key = `individual_${platform}`;
-            this.customOrderChecked[key] = {};
-            this.customOrderToggleState[key] = 2; // Set to "Check 5+" state
-            
-            sortedAnswers.forEach(answer => {
-              const count = answerCounts[answer] || 0;
-              this.customOrderChecked[key][answer] = count >= 5;
-            });
-            
-            this.showMessage('success', `Loaded ${sortedAnswers.length} unique answers (${sortedAnswers.filter(a => answerCounts[a] >= 5).length} with 5+ replies checked)`);
-          } catch (err) {
-            this.showMessage('error', 'Failed to load answers: ' + err.message);
-          } finally {
-            this.loadingAnswers = false;
-          }
-        },
-        
-        async addCountsToIndividualCustomOrder(platform) {
-          const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
-          const currentOrder = this.editingConfig[field];
-          
-          if (!currentOrder || currentOrder.trim() === '') {
-            this.showMessage('warning', 'No items in custom order. Load answers first.');
-            return;
-          }
-          
-          if (!this.editingQuestion || !this.editingQuestion.questionId) {
-            this.showMessage('error', 'No question selected');
-            return;
-          }
-          
-          this.loadingAnswers = true;
-          
-          try {
-            const options = await server.getAnswerOptions(this.editingQuestion.questionId);
-            const answerCounts = {};
-            
-            options.forEach(opt => {
-              answerCounts[opt.value] = opt.count;
-            });
-            
-            // Store counts globally
-            this.customOrderCounts = { ...this.customOrderCounts, ...answerCounts };
-            
-            // Get current items and sort by frequency
-            const items = currentOrder.split(',').map(s => s.trim()).filter(Boolean);
-            const sortedItems = items.sort((a, b) => {
-              const countA = answerCounts[a] || 0;
-              const countB = answerCounts[b] || 0;
-              return countB - countA; // Descending order
-            });
-            
-            // Update the custom order
-            this.editingConfig[field] = sortedItems.join(', ');
-            
-            this.showMessage('success', `Added counts and sorted by frequency`);
-          } catch (err) {
-            this.showMessage('error', 'Failed to add counts: ' + err.message);
-          } finally {
-            this.loadingAnswers = false;
-          }
-        },
-
-        getCustomOrderItemsWithMeta(emoji, platform) {
-          const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
-          const orderString = this.groupConfigs[emoji][field];
-          if (!orderString) return [];
-          
-          const items = orderString.split(',').map(s => s.trim()).filter(Boolean);
-          const key = `${emoji}_${platform}`;
-          
-          // Initialize checked states if not exists
-          if (!this.customOrderChecked[key]) {
-            this.customOrderChecked[key] = {};
-            items.forEach(item => {
-              this.customOrderChecked[key][item] = true; // Default to checked
-            });
-          }
-          
-          // Return items with metadata
-          return items.map(value => ({
-            value: value,
-            checked: this.customOrderChecked[key][value] !== false,
-            count: this.customOrderCounts[value]
-          }));
-        },
-        
-        toggleCustomOrderItem(emoji, platform, index) {
-          const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
-          const items = this.getCustomOrderArray(this.groupConfigs[emoji][field]);
-          const key = `${emoji}_${platform}`;
-          
-          if (index >= 0 && index < items.length) {
-            const item = items[index];
-            if (!this.customOrderChecked[key]) {
-              this.customOrderChecked[key] = {};
-            }
-            this.customOrderChecked[key][item] = !this.customOrderChecked[key][item];
-          }
-        },
-        
-        async loadAllAnswersToCustomOrder(emoji, platform) {
-          const questions = this.getQuestionsForEmoji(emoji);
-          if (questions.length === 0) {
-            this.showMessage('error', 'No questions in this group');
-            return;
-          }
-          
-          this.loadingGroupPreview = true;
-          const allAnswers = new Set();
-          const answerCounts = {};
-          
-          try {
-            // Gather all unique answers from all questions in the group
-            for (const qId of questions) {
-              // Check cache first
-              let options;
-              if (this.answerOptionsCache[qId]) {
-                options = this.answerOptionsCache[qId];
-              } else {
-                await new Promise(resolve => setTimeout(resolve, 300)); // Rate limiting
-                options = await server.getAnswerOptions(qId);
-                this.answerOptionsCache[qId] = options;
-              }
-              
-              options.forEach(opt => {
-                allAnswers.add(opt.value);
-                if (answerCounts[opt.value]) {
-                  answerCounts[opt.value] += opt.count;
-                } else {
-                  answerCounts[opt.value] = opt.count;
-                }
-              });
-            }
-            
-            // Store counts
-            this.customOrderCounts = { ...this.customOrderCounts, ...answerCounts };
-            
-            // Sort by frequency (descending)
-            const sortedAnswers = Array.from(allAnswers).sort((a, b) => {
-              const countA = answerCounts[a] || 0;
-              const countB = answerCounts[b] || 0;
-              return countB - countA;
-            });
-            
-            // Update the custom order field
-            const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
-            this.groupConfigs[emoji][field] = sortedAnswers.join(', ');
-            
-            // Initialize checkboxes: check only items with 5+ replies
-            const key = `${emoji}_${platform}`;
-            this.customOrderChecked[key] = {};
-            this.customOrderToggleState[key] = 2; // Set to "Check 5+" state
-            
-            sortedAnswers.forEach(answer => {
-              const count = answerCounts[answer] || 0;
-              this.customOrderChecked[key][answer] = count >= 5;
-            });
-            
-            const checkedCount = sortedAnswers.filter(a => answerCounts[a] >= 5).length;
-            this.showMessage('success', `Loaded ${sortedAnswers.length} unique answers from ${questions.length} questions (${checkedCount} with 5+ replies checked)`);
-          } catch (err) {
-            this.showMessage('error', 'Failed to load answers: ' + err.message);
-          } finally {
-            this.loadingGroupPreview = false;
-          }
-        },
-        
-        async addCountsToCustomOrder(emoji, platform) {
-          const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
-          const currentOrder = this.groupConfigs[emoji][field];
-          
-          if (!currentOrder || currentOrder.trim() === '') {
-            this.showMessage('warning', 'No items in custom order. Load answers first.');
-            return;
-          }
-          
-          const questions = this.getQuestionsForEmoji(emoji);
-          if (questions.length === 0) {
-            this.showMessage('error', 'No questions in this group');
-            return;
-          }
-          
-          this.loadingGroupPreview = true;
-          const answerCounts = {};
-          
-          try {
-            // Count occurrences across all questions in the group
-            for (const qId of questions) {
-              let options;
-              if (this.answerOptionsCache[qId]) {
-                options = this.answerOptionsCache[qId];
-              } else {
-                await new Promise(resolve => setTimeout(resolve, 300)); // Rate limiting
-                options = await server.getAnswerOptions(qId);
-                this.answerOptionsCache[qId] = options;
-              }
-              
-              options.forEach(opt => {
-                if (answerCounts[opt.value]) {
-                  answerCounts[opt.value] += opt.count;
-                } else {
-                  answerCounts[opt.value] = opt.count;
-                }
-              });
-            }
-            
-            // Store counts globally
-            this.customOrderCounts = { ...this.customOrderCounts, ...answerCounts };
-            
-            // Get current items and sort by frequency
-            const items = currentOrder.split(',').map(s => s.trim()).filter(Boolean);
-            const sortedItems = items.sort((a, b) => {
-              const countA = answerCounts[a] || 0;
-              const countB = answerCounts[b] || 0;
-              return countB - countA; // Descending order
-            });
-            
-            // Update the custom order
-            this.groupConfigs[emoji][field] = sortedItems.join(', ');
-            
-            this.showMessage('success', `Added counts and sorted by frequency`);
-          } catch (err) {
-            this.showMessage('error', 'Failed to add counts: ' + err.message);
-          } finally {
-            this.loadingGroupPreview = false;
-          }
-        },
-
-        getCustomOrderArray(orderString) {
-          if (!orderString) return [];
-          return orderString.split(',').map(s => s.trim()).filter(Boolean);
-        },
-
-        moveCustomOrderItem(emoji, platform, index, direction) {
-          const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
-          const items = this.getCustomOrderArray(this.groupConfigs[emoji][field]);
-          
-          if (items.length === 0) return;
-          
-          let newIndex = index;
-          if (direction === 'up') newIndex = Math.max(0, index - 1);
-          else if (direction === 'down') newIndex = Math.min(items.length - 1, index + 1);
-          else if (direction === 'top') newIndex = 0;
-          else if (direction === 'bottom') newIndex = items.length - 1;
-          
-          if (newIndex !== index) {
-            const [item] = items.splice(index, 1);
-            items.splice(newIndex, 0, item);
-            this.groupConfigs[emoji][field] = items.join(', ');
-          }
-        },
-
-        async preloadGroupAnswerOptions() {
-          if (!this.currentGroupQuestions || this.currentGroupQuestions.length === 0) {
-            return;
-          }
-          
-          console.log(`Preloading ${this.currentGroupQuestions.length} answer options...`);
-          const startTime = performance.now();
-          
-          try {
-            // Call the batch API to get all answer options at once
-            const result = await server.getMultipleAnswerOptions(this.currentGroupQuestions);
-            
-            // Store in cache
-            let cachedCount = 0;
-            Object.keys(result).forEach(qId => {
-              if (result[qId].answers) {
-                this.answerOptionsCache[qId] = result[qId].answers;
-                cachedCount++;
-              }
-            });
-            
-            const duration = (performance.now() - startTime).toFixed(0);
-            console.log(`✓ Preloaded ${cachedCount} answer options in ${duration}ms`);
-          } catch (err) {
-            console.error('Failed to preload answer options:', err);
-            // Don't show error to user - individual loads will still work
-          }
-        },
-        
-        async loadGroupQuestionPreview() {
-          if (!this.previewQuestionId) {
-            this.groupPreviewAnswers = [];
-            this.loadingGroupPreview = false;
-            return;
-          }
-          
-          this.loadingGroupPreview = true;
-          this.groupPreviewAnswers = [];
-          
-          // Check cache first
-          if (this.answerOptionsCache[this.previewQuestionId]) {
-            console.log(`✓ Using cached answers for ${this.previewQuestionId}`);
-            this.groupPreviewAnswers = this.answerOptionsCache[this.previewQuestionId];
-            this.loadingGroupPreview = false;
-            return;
-          }
-          
-          console.log(`⚠ Cache miss - loading ${this.previewQuestionId} from server`);
-          
-          // Add small delay to avoid rate limiting
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
-          try {
-            const options = await server.getAnswerOptions(this.previewQuestionId);
-            this.groupPreviewAnswers = options;
-            // Store in cache for future use
-            this.answerOptionsCache[this.previewQuestionId] = options;
-          } catch (err) {
-            if (err.message && err.message.includes('429')) {
-              this.showMessage('error', 'Rate limit reached. Please wait a moment and try again.');
-            } else {
-              this.showMessage('error', 'Failed to load answers: ' + err);
-            }
-          }
-          
-          this.loadingGroupPreview = false;
-        },
-        
-        hasNextGroup() {
-          return this.currentGroupIndex < this.allGroupNames.length - 1;
-        },
-        
-        async saveGroupAndNext() {
-          await this.saveGroupConfig();
-          
-          const nextGroupName = this.allGroupNames[this.currentGroupIndex + 1];
-          if (nextGroupName) {
-            this.openGroupModal(nextGroupName);
-          }
-        },
-        
-        async saveGroupConfig() {
-          const configsToSave = [];
-          
-          for (const emoji of this.activeGroupEmojis) {
-            const config = { ...this.groupConfigs[emoji] };
-            const questions = this.getQuestionsForEmoji(emoji);
-            
-            if (questions.length === 0) continue;
-            
-            if (!config.questionType || !config.chartType) {
-              this.showMessage('error', `Please configure ${emoji} group completely`);
-              return;
-            }
-            
-            // Filter custom order to only include checked items
-            if (config.sortType === 'custom' && config.customOrder) {
-              const desktopKey = `${emoji}_desktop`;
-              if (this.customOrderChecked[desktopKey]) {
-                const items = config.customOrder.split(',').map(s => s.trim()).filter(Boolean);
-                const checkedItems = items.filter(item => this.customOrderChecked[desktopKey][item] !== false);
-                config.customOrder = checkedItems.join(', ');
-              }
-            }
-            
-            if (config.sortTypeMobile === 'custom' && config.customOrderMobile) {
-              const mobileKey = `${emoji}_mobile`;
-              if (this.customOrderChecked[mobileKey]) {
-                const items = config.customOrderMobile.split(',').map(s => s.trim()).filter(Boolean);
-                const checkedItems = items.filter(item => this.customOrderChecked[mobileKey][item] !== false);
-                config.customOrderMobile = checkedItems.join(', ');
-              }
-            }
-            
-            questions.forEach(qId => {
-              configsToSave.push({
-                questionId: qId,
-                config: { ...config }
-              });
-            });
-          }
-          
-          if (configsToSave.length === 0) {
-            this.showMessage('error', 'No configurations to save');
-            return;
-          }
-          
-          try {
-            await server.saveMultipleConfigsToSheet(configsToSave);
-            
-            configsToSave.forEach(({ questionId, config }) => {
-              this.currentConfig[questionId] = config;
-            });
-            
-            this.showMessage('success', `Saved ${configsToSave.length} configurations`);
-            this.closeGroupModal();
-          } catch (err) {
-            this.showMessage('error', 'Failed to save: ' + err);
-          }
-        },
-        
-        closeGroupModal() {
-          this.showGroupModal = false;
-          this.editingGroupName = '';
-          this.currentGroupQuestions = [];
-          this.questionGroupAssignments = {};
-          this.groupConfigs = {};
-          this.commonAnswers = [];
-          this.comparisonData = null;
-          this.comparisonCollapsed = false;
-          this.previewQuestionId = '';
-          this.groupPreviewAnswers = [];
-          this.answerOptionsCache = {}; // Clear the cache
-          this.customOrderChecked = {}; // Clear checkbox states
-          this.customOrderCounts = {}; // Clear counts
-          if (this.comparisonDebounceTimer) {
-            clearTimeout(this.comparisonDebounceTimer);
-            this.comparisonDebounceTimer = null;
-          }
-          if (this.previewNavigationTimer) {
-            clearTimeout(this.previewNavigationTimer);
-            this.previewNavigationTimer = null;
-          }
-          this.comparisonRequestId++;
-        },
-        
-        closeGroupModalIfBackdrop(e) {
-          if (e.target.classList.contains('modal-overlay')) {
-            this.closeGroupModal();
-          }
-        },
-        
-        async openTextFacetModal() {
-          if (!this.editingQuestion || !this.editingQuestion.questionId) return;
-          this.showFacetModal = true;
-          this.facetPendingEdits = {};
-          this.facetSearchTerm = '';
-          this.facetOriginalValues = {};
-          this.facetSplitByComma = false;
-          this.facetSortBy = 'alphabetical';
-          await this.loadFacetValues();
-        },
-        
-        async loadFacetValues() {
-          if (!this.editingQuestion || !this.editingQuestion.questionId) {
-            this.showMessage('error', 'No question selected');
-            return;
-          }
-          
-          this.loadingFacetValues = true;
-          this.facetValues = [];
-          this.facetOriginalValues = {};
-          
-          try {
-            // Check if this is group faceting
-            if (this.editingQuestion.questionId === this.editingGroupName && this.editingGroupName) {
-              // Load combined values from all questions in the group
-              const allAnswers = {};
-              
-              // Add delay between requests to avoid rate limiting
-              for (let i = 0; i < this.currentGroupQuestions.length; i++) {
-                const qId = this.currentGroupQuestions[i];
-                
-                // Add delay between questions (except for the first one)
-                if (i > 0) {
-                  await new Promise(resolve => setTimeout(resolve, 400));
-                }
-                
-                try {
-                  const options = await server.getAnswerOptions(qId);
-                  options.forEach(opt => {
-                    if (allAnswers[opt.value]) {
-                      allAnswers[opt.value] += opt.count;
-                    } else {
-                      allAnswers[opt.value] = opt.count;
-                    }
-                  });
-                } catch (err) {
-                  console.error(`Failed to load answers for ${qId}:`, err);
-                  // Continue with other questions even if one fails
-                }
-              }
-              
-              this.facetValues = Object.entries(allAnswers)
-                .map(([value, count]) => ({ value, count }));
-            } else {
-              // Single question - use the question ID directly
-              const questionId = this.editingQuestion.questionId;
-              const options = await server.getAnswerOptions(questionId);
-              this.facetValues = options.map(opt => ({
-                value: opt.value,
-                count: opt.count
-              }));
-            }
-            
-            // Store original values for restore functionality
-            this.facetValues.forEach(v => {
-              this.facetOriginalValues[v.value] = v.value;
-            });
-            
-            // Apply splitting if enabled
-            if (this.facetSplitByComma) {
-              this.applySplitToValues();
-            }
-            
-            // Apply current sort
-            this.sortFacetValues(this.facetSortBy);
-            
-          } catch (err) {
-            if (err.message && err.message.includes('429')) {
-              this.showMessage('error', 'Rate limit reached. Please wait a moment and try again.');
-            } else {
-              this.showMessage('error', 'Failed to load values: ' + err.message || err);
-            }
-            console.error('Error loading facet values:', err);
-          }
-          
-          this.loadingFacetValues = false;
-        },
-        
-        toggleFacetSplit() {
-          if (this.facetSplitByComma) {
-            this.applySplitToValues();
-          } else {
-            // Reload without splitting
-            this.loadFacetValues();
-          }
-        },
-        
-        applySplitToValues() {
-          const splitValues = {};
-          
-          this.facetValues.forEach(item => {
-            const parts = item.value.split(',').map(p => p.trimEnd()).filter(p => p);
-            parts.forEach(part => {
-              if (splitValues[part]) {
-                splitValues[part] += item.count;
-              } else {
-                splitValues[part] = item.count;
-              }
-            });
-          });
-          
-          this.facetValues = Object.entries(splitValues).map(([value, count]) => ({
-            value,
-            count
-          }));
-          
-          // Update original values map
-          this.facetValues.forEach(v => {
-            if (!this.facetOriginalValues.hasOwnProperty(v.value)) {
-              this.facetOriginalValues[v.value] = v.value;
-            }
-          });
-          
-          this.sortFacetValues(this.facetSortBy);
-        },
-        
-        sortFacetValues(sortType) {
-          this.facetSortBy = sortType;
-          
-          if (sortType === 'alphabetical') {
-            this.facetValues.sort((a, b) => {
-              const aVal = this.facetPendingEdits[a.value] !== undefined ? this.facetPendingEdits[a.value] : a.value;
-              const bVal = this.facetPendingEdits[b.value] !== undefined ? this.facetPendingEdits[b.value] : b.value;
-              return aVal.localeCompare(bVal);
-            });
-          } else if (sortType === 'numerical') {
-            this.facetValues.sort((a, b) => {
-              const aVal = this.facetPendingEdits[a.value] !== undefined ? this.facetPendingEdits[a.value] : a.value;
-              const bVal = this.facetPendingEdits[b.value] !== undefined ? this.facetPendingEdits[b.value] : b.value;
-              const aNum = parseFloat(aVal);
-              const bNum = parseFloat(bVal);
-              if (isNaN(aNum) && isNaN(bNum)) return 0;
-              if (isNaN(aNum)) return 1;
-              if (isNaN(bNum)) return -1;
-              return aNum - bNum;
-            });
-          } else if (sortType === 'count') {
-            this.facetValues.sort((a, b) => b.count - a.count);
-          }
-          
-          // Force reactivity
-          this.facetValues = [...this.facetValues];
-        },
-        
-        toTitleCase(str) {
-          // Words that should not be capitalized in titles
-          const lowercase = new Set([
-            'a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'from', 'in', 
-            'into', 'of', 'on', 'or', 'the', 'to', 'with'
-          ]);
-          
-          const words = str.toLowerCase().split(' ');
-          return words.map((word, index) => {
-            // Always capitalize first and last word
-            if (index === 0 || index === words.length - 1 || !lowercase.has(word)) {
-              return word.charAt(0).toUpperCase() + word.slice(1);
-            }
-            return word;
-          }).join(' ');
-        },
-        
-        toSentenceCase(str) {
-          // Words/letters that should always be capitalized
-          const alwaysCapitalize = new Set(['i', 'i\'m', 'i\'ve', 'i\'ll', 'i\'d']);
-          
-          const sentences = str.toLowerCase().split('. ');
-          return sentences.map(sentence => {
-            const words = sentence.split(' ');
-            return words.map((word, index) => {
-              // Capitalize first word of sentence
-              if (index === 0) {
-                return word.charAt(0).toUpperCase() + word.slice(1);
-              }
-              // Capitalize words in the special list
-              if (alwaysCapitalize.has(word.toLowerCase())) {
-                return word.charAt(0).toUpperCase() + word.slice(1);
-              }
-              return word;
-            }).join(' ');
-          }).join('. ');
-        },
-        
-        applyCaseToValue(originalValue, caseType) {
-          const currentValue = this.facetPendingEdits[originalValue] !== undefined ? 
-            this.facetPendingEdits[originalValue] : originalValue;
-          
-          let newValue;
-          if (caseType === 'upper') {
-            newValue = currentValue.toUpperCase();
-          } else if (caseType === 'title') {
-            newValue = this.toTitleCase(currentValue);
-          } else if (caseType === 'sentence') {
-            newValue = this.toSentenceCase(currentValue);
-          }
-          
-          this.updateFacetEdit(originalValue, newValue);
-        },
-        
-        bulkApplyCaseChange(caseType) {
-          this.facetValues.forEach(item => {
-            this.applyCaseToValue(item.value, caseType);
-          });
-        },
-        
-        restoreFacetValue(originalValue) {
-          if (this.facetPendingEdits.hasOwnProperty(originalValue)) {
-            delete this.facetPendingEdits[originalValue];
-            this.facetPendingEdits = { ...this.facetPendingEdits };
-          }
-        },
-        
-        updateFacetEdit(original, newValue) {
-          if (original === newValue) {
-            delete this.facetPendingEdits[original];
-          } else {
-            this.facetPendingEdits[original] = newValue;
-          }
-          // Force reactivity
-          this.facetPendingEdits = { ...this.facetPendingEdits };
-        },
-        
-        async applyFacetChanges() {
-          if (Object.keys(this.facetPendingEdits).length === 0) return;
-          
-          try {
-            this.loadingFacetValues = true;
-            
-            // Build replacements array, filtering out empty values
-            const replacements = Object.entries(this.facetPendingEdits)
-              .filter(([old, newVal]) => newVal !== '') // Exclude deletions for now
-              .map(([old, newVal]) => ({
-                oldValue: old,
-                newValue: newVal
-              }));
-            
-            // Handle deletions separately (values set to empty string)
-            const deletions = Object.entries(this.facetPendingEdits)
-              .filter(([old, newVal]) => newVal === '')
-              .map(([old, newVal]) => ({
-                oldValue: old,
-                newValue: newVal
-              }));
-            
-            // Combine replacements and deletions
-            const allReplacements = [...replacements, ...deletions];
-            
-            if (allReplacements.length === 0) {
-              this.showMessage('warning', 'No changes to apply');
-              this.loadingFacetValues = false;
-              return;
-            }
-            
-            // Check if this is a group facet operation
-            if (this.editingQuestion.questionId === this.editingGroupName) {
-              // Apply to all questions in the group with rate optimization
-              await server.replaceTextValuesRateOptimized(
-                this.currentGroupQuestions, 
-                allReplacements,
-                this.facetSplitByComma
-              );
-              this.showMessage('success', `Applied ${allReplacements.length} changes to ${this.currentGroupQuestions.length} questions`);
-            } else {
-              // Apply to single question
-              await server.replaceTextValuesWithOptions(
-                this.editingQuestion.questionId, 
-                allReplacements,
-                this.facetSplitByComma
-              );
-              this.showMessage('success', `Applied ${allReplacements.length} changes`);
-            }
-            
-            this.facetPendingEdits = {};
-            
-            // Reload the appropriate data
-            if (this.editingQuestion.questionId === this.editingGroupName) {
-              await this.openGroupFacetModal();
-            } else {
-              await this.loadFacetValues();
-              
-              // Reload preview if we're in group modal
-              if (this.showGroupModal && this.previewQuestionId === this.editingQuestion.questionId) {
-                await this.loadGroupQuestionPreview();
-              }
-              
-              // Reload answer options if we're in individual config modal
-              if (this.showConfigModal && this.editingConfig.questionType) {
-                await this.loadAnswerOptions(this.editingQuestion.questionId);
-              }
-            }
-          } catch (err) {
-            this.showMessage('error', 'Failed to apply changes: ' + err);
-          }
-          
-          this.loadingFacetValues = false;
-        },
-        
-        closeFacetModal() {
-          this.showFacetModal = false;
-          this.facetValues = [];
-          this.facetPendingEdits = {};
-          this.facetSearchTerm = '';
-          this.facetSplitByComma = false;
-          this.facetSortBy = 'alphabetical';
-          this.facetOriginalValues = {};
-        },
-        
-        closeFacetModalIfBackdrop(e) {
-          if (e.target.classList.contains('modal-overlay')) {
-            this.closeFacetModal();
-          }
-        },
-        
-        async uploadConfig() {
-          try {
-            const result = await server.uploadConfigToDatabase(this.currentConfig);
-            this.showMessage('success', `Uploaded ${result.uploaded} configurations to database`);
-          } catch (err) {
-            this.showMessage('error', 'Upload failed: ' + err);
-          }
-        },
-        
-        showMessage(type, text) {
-          this.messages.push({ type, text });
-          setTimeout(() => {
-            this.messages = this.messages.filter(m => m.text !== text);
-          }, 5000);
-        }
-      };
-    }
-  </script>
+  <?!= HtmlService.createHtmlOutputFromFile('QuestionConfigApp').getContent(); ?>
 </body>
 </html>
