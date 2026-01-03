@@ -305,20 +305,23 @@ class ConfigManager {
     
     const data = sheet.getRange(2, 1, lastRow - 1, CONFIG_COLUMN_COUNT).getValues();
     
+    // Helper to safely trim string values
+    const trimStr = (val) => (val == null ? '' : String(val).trim());
+    
     return data.reduce((acc, row) => {
-      const questionId = String(row[0]).trim();
+      const questionId = trimStr(row[0]);
       if (questionId) {
         acc[questionId] = {
-          questionText: row[1] || '',
-          questionType: row[2],
-          chartType: row[3],
-          mobileChartType: row[4] || '',
+          questionText: trimStr(row[1]),
+          questionType: trimStr(row[2]),
+          chartType: trimStr(row[3]),
+          mobileChartType: trimStr(row[4]),
           hasOther: row[5] === true,
-          sortType: row[6] || 'none',
-          sortTypeMobile: row[7] || '',
-          customOrder: row[8] || '',
-          customOrderMobile: row[9] || '',
-          colorGroup: row[10] || ''
+          sortType: trimStr(row[6]) || 'none',
+          sortTypeMobile: trimStr(row[7]),
+          customOrder: trimStr(row[8]),
+          customOrderMobile: trimStr(row[9]),
+          colorGroup: trimStr(row[10])
         };
       }
       return acc;

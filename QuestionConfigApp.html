@@ -1424,21 +1424,14 @@
        * When entering reconcile mode, load each question's current config into reconcileConfigs
        */
       toggleReconcileMode() {
-        this.reconcileMode = !this.reconcileMode;
-        
-        if (this.reconcileMode) {
-          // Initialize reconcileConfigs with each question's current saved config
-          // Using a fresh object for Alpine reactivity
+        if (!this.reconcileMode) {
+          // Entering reconcile mode - initialize configs first, then show UI
           const newConfigs = {};
           
           this.currentLinkedQuestions.forEach(qId => {
-            // Look up the saved config from currentConfig (loaded from Question Configuration sheet)
             const savedConfig = this.currentConfig[qId];
-            
-            // Debug: Log what we found
             console.log(`Reconcile: Loading config for ${qId}:`, savedConfig);
             
-            // Deep copy the config or create default values
             newConfigs[qId] = {
               questionType: savedConfig?.questionType || '',
               chartType: savedConfig?.chartType || '',
@@ -1452,10 +1445,17 @@
             };
           });
           
-          // Assign to trigger Alpine reactivity
+          // Set data first, then toggle mode in nextTick to ensure reactivity
           this.reconcileConfigs = newConfigs;
-          
           console.log('Reconcile configs initialized:', this.reconcileConfigs);
+          
+          // Use nextTick to ensure Alpine processes the data before showing the UI
+          this.$nextTick(() => {
+            this.reconcileMode = true;
+          });
+        } else {
+          // Exiting reconcile mode
+          this.reconcileMode = false;
         }
       },
       

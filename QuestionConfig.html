@@ -222,7 +222,7 @@
                   <select class="form-select" x-model="editingConfig.questionType" @change="onQuestionTypeChange()">
                     <option value="">Select type...</option>
                     <template x-for="type in questionTypes" :key="type">
-                      <option :value="type" x-text="type"></option>
+                      <option :value="type" x-text="type" :selected="type === editingConfig.questionType"></option>
                     </template>
                   </select>
                 </div>
@@ -232,7 +232,7 @@
                   <select class="form-select" x-model="editingConfig.chartType" :disabled="!editingConfig.questionType">
                     <option value="">Select chart...</option>
                     <template x-for="chart in availableCharts" :key="chart">
-                      <option :value="chart" x-text="chart"></option>
+                      <option :value="chart" x-text="chart" :selected="chart === editingConfig.chartType"></option>
                     </template>
                   </select>
                 </div>
@@ -242,7 +242,7 @@
                   <select class="form-select" x-model="editingConfig.mobileChartType" :disabled="!editingConfig.questionType">
                     <option value="">Same as desktop</option>
                     <template x-for="chart in availableCharts" :key="chart">
-                      <option :value="chart" x-text="chart"></option>
+                      <option :value="chart" x-text="chart" :selected="chart === editingConfig.mobileChartType"></option>
                     </template>
                   </select>
                 </div>
@@ -258,9 +258,9 @@
                   <label class="form-label">Color Group</label>
                   <div class="flex items-center gap-2">
                     <select class="form-select" x-model="editingConfig.colorGroup" style="width: auto; min-width: 80px;">
-                      <option value="">None</option>
+                      <option value="" :selected="!editingConfig.colorGroup">None</option>
                       <template x-for="emoji in colorGroupEmojis" :key="emoji">
-                        <option :value="emoji" x-text="emoji"></option>
+                        <option :value="emoji" x-text="emoji" :selected="emoji === editingConfig.colorGroup"></option>
                       </template>
                     </select>
                     <span class="text-xs text-secondary">Assign to a color group for filtering</span>
@@ -270,13 +270,13 @@
                 <div class="form-group">
                   <label class="form-label">Sort Type (Desktop)</label>
                   <select class="form-select" x-model="editingConfig.sortType" @change="onSortTypeChange('desktop')">
-                    <option value="none">none</option>
-                    <option value="alphabetical">alphabetical</option>
-                    <option value="frequency_desc">frequency_desc</option>
-                    <option value="frequency_asc">frequency_asc</option>
-                    <option value="ordinal">ordinal</option>
-                    <option value="height">height</option>
-                    <option value="custom">custom</option>
+                    <option value="none" :selected="editingConfig.sortType === 'none'">none</option>
+                    <option value="alphabetical" :selected="editingConfig.sortType === 'alphabetical'">alphabetical</option>
+                    <option value="frequency_desc" :selected="editingConfig.sortType === 'frequency_desc'">frequency_desc</option>
+                    <option value="frequency_asc" :selected="editingConfig.sortType === 'frequency_asc'">frequency_asc</option>
+                    <option value="ordinal" :selected="editingConfig.sortType === 'ordinal'">ordinal</option>
+                    <option value="height" :selected="editingConfig.sortType === 'height'">height</option>
+                    <option value="custom" :selected="editingConfig.sortType === 'custom'">custom</option>
                   </select>
                 </div>
                 
@@ -332,12 +332,12 @@
                 <div class="form-group">
                   <label class="form-label">Sort Type (Mobile)</label>
                   <select class="form-select" x-model="editingConfig.sortTypeMobile" @change="onSortTypeChange('mobile')">
-                    <option value="">Same as desktop</option>
-                    <option value="none">none</option>
-                    <option value="alphabetical">alphabetical</option>
-                    <option value="frequency_desc">frequency_desc</option>
-                    <option value="frequency_asc">frequency_asc</option>
-                    <option value="custom">custom</option>
+                    <option value="" :selected="!editingConfig.sortTypeMobile">Same as desktop</option>
+                    <option value="none" :selected="editingConfig.sortTypeMobile === 'none'">none</option>
+                    <option value="alphabetical" :selected="editingConfig.sortTypeMobile === 'alphabetical'">alphabetical</option>
+                    <option value="frequency_desc" :selected="editingConfig.sortTypeMobile === 'frequency_desc'">frequency_desc</option>
+                    <option value="frequency_asc" :selected="editingConfig.sortTypeMobile === 'frequency_asc'">frequency_asc</option>
+                    <option value="custom" :selected="editingConfig.sortTypeMobile === 'custom'">custom</option>
                   </select>
                 </div>
                 
@@ -514,9 +514,9 @@
                     <div class="question-chip">
                       <select class="group-selector" :value="tempColorGroupAssignments[qId] || ''" 
                               @change="assignQuestionToColorGroup(qId, $event.target.value)">
-                        <option value="">None</option>
+                        <option value="" :selected="!tempColorGroupAssignments[qId]">None</option>
                         <template x-for="emoji in colorGroupEmojis" :key="emoji">
-                          <option :value="emoji" x-text="emoji"></option>
+                          <option :value="emoji" x-text="emoji" :selected="emoji === tempColorGroupAssignments[qId]"></option>
                         </template>
                       </select>
                       <div class="flex-1 min-w-0">
@@ -643,7 +643,7 @@
                         <select class="form-select" x-model="tempColorGroupConfigs[emoji].questionType" @change="onColorGroupQuestionTypeChange(emoji)">
                           <option value="">Select type...</option>
                           <template x-for="type in questionTypes" :key="type">
-                            <option :value="type" x-text="type"></option>
+                            <option :value="type" x-text="type" :selected="type === tempColorGroupConfigs[emoji].questionType"></option>
                           </template>
                         </select>
                       </div>
@@ -653,7 +653,7 @@
                         <select class="form-select" x-model="tempColorGroupConfigs[emoji].chartType" :disabled="!tempColorGroupConfigs[emoji].questionType">
                           <option value="">Select chart...</option>
                           <template x-for="chart in getColorGroupAvailableCharts(emoji)" :key="chart">
-                            <option :value="chart" x-text="chart"></option>
+                            <option :value="chart" x-text="chart" :selected="chart === tempColorGroupConfigs[emoji].chartType"></option>
                           </template>
                         </select>
                       </div>
@@ -663,7 +663,7 @@
                         <select class="form-select" x-model="tempColorGroupConfigs[emoji].mobileChartType" :disabled="!tempColorGroupConfigs[emoji].questionType">
                           <option value="">Same as desktop</option>
                           <template x-for="chart in getColorGroupAvailableCharts(emoji)" :key="chart">
-                            <option :value="chart" x-text="chart"></option>
+                            <option :value="chart" x-text="chart" :selected="chart === tempColorGroupConfigs[emoji].mobileChartType"></option>
                           </template>
                         </select>
                       </div>
@@ -678,13 +678,13 @@
                       <div class="form-group">
                         <label class="form-label">Sort Type (Desktop)</label>
                         <select class="form-select" x-model="tempColorGroupConfigs[emoji].sortType" @change="onColorGroupSortTypeChange(emoji, 'desktop')">
-                          <option value="none">none</option>
-                          <option value="alphabetical">alphabetical</option>
-                          <option value="frequency_desc">frequency_desc</option>
-                          <option value="frequency_asc">frequency_asc</option>
-                          <option value="ordinal">ordinal</option>
-                          <option value="height">height</option>
-                          <option value="custom">custom</option>
+                          <option value="none" :selected="tempColorGroupConfigs[emoji].sortType === 'none'">none</option>
+                          <option value="alphabetical" :selected="tempColorGroupConfigs[emoji].sortType === 'alphabetical'">alphabetical</option>
+                          <option value="frequency_desc" :selected="tempColorGroupConfigs[emoji].sortType === 'frequency_desc'">frequency_desc</option>
+                          <option value="frequency_asc" :selected="tempColorGroupConfigs[emoji].sortType === 'frequency_asc'">frequency_asc</option>
+                          <option value="ordinal" :selected="tempColorGroupConfigs[emoji].sortType === 'ordinal'">ordinal</option>
+                          <option value="height" :selected="tempColorGroupConfigs[emoji].sortType === 'height'">height</option>
+                          <option value="custom" :selected="tempColorGroupConfigs[emoji].sortType === 'custom'">custom</option>
                         </select>
                       </div>
                       
@@ -742,12 +742,12 @@
                       <div class="form-group">
                         <label class="form-label">Sort Type (Mobile)</label>
                         <select class="form-select" x-model="tempColorGroupConfigs[emoji].sortTypeMobile" @change="onColorGroupSortTypeChange(emoji, 'mobile')">
-                          <option value="">Same as desktop</option>
-                          <option value="none">none</option>
-                          <option value="alphabetical">alphabetical</option>
-                          <option value="frequency_desc">frequency_desc</option>
-                          <option value="frequency_asc">frequency_asc</option>
-                          <option value="custom">custom</option>
+                          <option value="" :selected="!tempColorGroupConfigs[emoji].sortTypeMobile">Same as desktop</option>
+                          <option value="none" :selected="tempColorGroupConfigs[emoji].sortTypeMobile === 'none'">none</option>
+                          <option value="alphabetical" :selected="tempColorGroupConfigs[emoji].sortTypeMobile === 'alphabetical'">alphabetical</option>
+                          <option value="frequency_desc" :selected="tempColorGroupConfigs[emoji].sortTypeMobile === 'frequency_desc'">frequency_desc</option>
+                          <option value="frequency_asc" :selected="tempColorGroupConfigs[emoji].sortTypeMobile === 'frequency_asc'">frequency_asc</option>
+                          <option value="custom" :selected="tempColorGroupConfigs[emoji].sortTypeMobile === 'custom'">custom</option>
                         </select>
                       </div>
                       
@@ -829,7 +829,7 @@
                                   @change="onReconcileQuestionTypeChange(qId)">
                             <option value="">Select type...</option>
                             <template x-for="type in questionTypes" :key="type">
-                              <option :value="type" x-text="type"></option>
+                              <option :value="type" x-text="type" :selected="type === reconcileConfigs[qId]?.questionType"></option>
                             </template>
                           </select>
                         </div>
@@ -848,7 +848,7 @@
                                   x-model="reconcileConfigs[qId].chartType">
                             <option value="">Select chart...</option>
                             <template x-for="chart in getReconcileAvailableCharts(qId)" :key="chart">
-                              <option :value="chart" x-text="chart"></option>
+                              <option :value="chart" x-text="chart" :selected="chart === reconcileConfigs[qId]?.chartType"></option>
                             </template>
                           </select>
                         </div>
@@ -867,7 +867,7 @@
                                   x-model="reconcileConfigs[qId].mobileChartType">
                             <option value="">Same as desktop</option>
                             <template x-for="chart in getReconcileAvailableCharts(qId)" :key="chart">
-                              <option :value="chart" x-text="chart"></option>
+                              <option :value="chart" x-text="chart" :selected="chart === reconcileConfigs[qId]?.mobileChartType"></option>
                             </template>
                           </select>
                         </div>
@@ -899,13 +899,13 @@
                           <select class="form-select text-xs"
                                   :class="{ 'field-differs': questionFieldDiffers(qId, 'sortType') }"
                                   x-model="reconcileConfigs[qId].sortType">
-                            <option value="none">none</option>
-                            <option value="alphabetical">alphabetical</option>
-                            <option value="frequency_desc">frequency_desc</option>
-                            <option value="frequency_asc">frequency_asc</option>
-                            <option value="ordinal">ordinal</option>
-                            <option value="height">height</option>
-                            <option value="custom">custom</option>
+                            <option value="none" :selected="reconcileConfigs[qId]?.sortType === 'none'">none</option>
+                            <option value="alphabetical" :selected="reconcileConfigs[qId]?.sortType === 'alphabetical'">alphabetical</option>
+                            <option value="frequency_desc" :selected="reconcileConfigs[qId]?.sortType === 'frequency_desc'">frequency_desc</option>
+                            <option value="frequency_asc" :selected="reconcileConfigs[qId]?.sortType === 'frequency_asc'">frequency_asc</option>
+                            <option value="ordinal" :selected="reconcileConfigs[qId]?.sortType === 'ordinal'">ordinal</option>
+                            <option value="height" :selected="reconcileConfigs[qId]?.sortType === 'height'">height</option>
+                            <option value="custom" :selected="reconcileConfigs[qId]?.sortType === 'custom'">custom</option>
                           </select>
                         </div>
                         
@@ -921,12 +921,12 @@
                           <select class="form-select text-xs"
                                   :class="{ 'field-differs': questionFieldDiffers(qId, 'sortTypeMobile') }"
                                   x-model="reconcileConfigs[qId].sortTypeMobile">
-                            <option value="">Same as desktop</option>
-                            <option value="none">none</option>
-                            <option value="alphabetical">alphabetical</option>
-                            <option value="frequency_desc">frequency_desc</option>
-                            <option value="frequency_asc">frequency_asc</option>
-                            <option value="custom">custom</option>
+                            <option value="" :selected="!reconcileConfigs[qId]?.sortTypeMobile">Same as desktop</option>
+                            <option value="none" :selected="reconcileConfigs[qId]?.sortTypeMobile === 'none'">none</option>
+                            <option value="alphabetical" :selected="reconcileConfigs[qId]?.sortTypeMobile === 'alphabetical'">alphabetical</option>
+                            <option value="frequency_desc" :selected="reconcileConfigs[qId]?.sortTypeMobile === 'frequency_desc'">frequency_desc</option>
+                            <option value="frequency_asc" :selected="reconcileConfigs[qId]?.sortTypeMobile === 'frequency_asc'">frequency_asc</option>
+                            <option value="custom" :selected="reconcileConfigs[qId]?.sortTypeMobile === 'custom'">custom</option>
                           </select>
                         </div>
                         
@@ -972,9 +972,9 @@
                           <select class="form-select text-xs"
                                   :class="{ 'field-differs': questionFieldDiffers(qId, 'colorGroup') }"
                                   x-model="reconcileConfigs[qId].colorGroup">
-                            <option value="">No group</option>
+                            <option value="" :selected="!reconcileConfigs[qId]?.colorGroup">No group</option>
                             <template x-for="emoji in colorGroupEmojis" :key="emoji">
-                              <option :value="emoji" x-text="emoji"></option>
+                              <option :value="emoji" x-text="emoji" :selected="emoji === reconcileConfigs[qId]?.colorGroup"></option>
                             </template>
                           </select>
                         </div>
