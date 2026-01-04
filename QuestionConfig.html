@@ -431,7 +431,7 @@
     <!-- Questions are temporarily assigned to Color Groups for batch configuration -->
     <div class="modal-overlay" :class="{ active: showLinkedQuestionsModal }" @click="closeLinkedQuestionsModalIfBackdrop($event)">
       <div class="modal wide" @click.stop>
-        <div class="modal-header">
+        <div class="modal-header" style="background: #f8f9fa; color: #333; border-bottom: 2px solid var(--primary);">
           <h2 class="text-lg font-medium" x-text="'Configure Linked Questions: ' + editingLinkedGroupName"></h2>
         </div>
         <div class="modal-content" style="padding: 0;">
@@ -544,32 +544,28 @@
                     ✕ Exit Reconcile
                   </button>
                 </div>
-                <p class="text-xs text-warning mb-2">Compare configs across questions. Yellow = values differ. Click "Use" to apply a value to all questions.</p>
+                <p class="text-warning mb-2" style="font-size: 14px;">Compare configs across questions. Yellow = values differ. Click "Use" to apply a value to all questions.</p>
                 
                 <!-- Field differences summary -->
                 <div class="mb-3">
-                  <div class="text-xs font-semibold mb-1">Field Status:</div>
+                  <div class="text-sm font-semibold mb-1" style="font-size: 14px;">Field Status:</div>
                   <template x-for="field in reconcileFields" :key="'field-status-' + field.key">
-                    <div class="flex justify-between items-center text-xs py-1 border-b" 
+                    <div class="flex justify-between items-center py-1 border-b" style="font-size: 14px;"
                          :class="{ 'text-warning': fieldHasDifference(field.key) }">
                       <span x-text="field.label"></span>
                       <div class="flex items-center gap-1">
                         <span x-show="fieldHasDifference(field.key)" class="text-warning">⚠️ Differs</span>
                         <span x-show="!fieldHasDifference(field.key)" class="text-success">✓</span>
-                        <button x-show="fieldHasDifference(field.key)" 
-                                class="btn-merge"
-                                @click="syncFieldToConsensus(field.key)"
-                                title="Sync all to most common value">Sync</button>
                       </div>
                     </div>
                   </template>
                 </div>
                 
                 <!-- Question list -->
-                <div class="text-xs font-semibold mb-1">Questions (<span x-text="currentLinkedQuestions.length"></span>):</div>
+                <div class="font-semibold mb-1" style="font-size: 14px;">Questions (<span x-text="currentLinkedQuestions.length"></span>):</div>
                 <div class="questions-list" style="max-height: 150px;">
                   <template x-for="qId in currentLinkedQuestions" :key="'reconcile-list-' + qId">
-                    <div class="text-xs p-2 border-b truncate" :title="qId" x-text="qId"></div>
+                    <div class="p-2 border-b truncate" style="font-size: 14px;" :title="qId" x-text="qId"></div>
                   </template>
                 </div>
               </div>
@@ -632,12 +628,12 @@
               <!-- Normal Mode: Color Group Columns -->
               <div class="config-columns-container" x-show="!reconcileMode && activeColorGroupsInModal.length > 0">
                 <template x-for="emoji in activeColorGroupsInModal" :key="emoji">
-                  <div class="config-column-item">
+                  <div class="config-column-item" style="display: flex; flex-direction: column;">
                     <div class="config-column-header">
                       <span x-text="emoji + ' Color Group'"></span>
                       <span class="text-xs opacity-70 ml-2" x-text="'(' + getQuestionsForColorGroup(emoji).length + ' questions)'"></span>
                     </div>
-                    <div class="config-column-body">
+                    <div class="config-column-body" style="display: flex; flex-direction: column; flex: 1; overflow-y: auto;">
                       <div class="form-group">
                         <label class="form-label">Question Type</label>
                         <select class="form-select" x-model="tempColorGroupConfigs[emoji].questionType" @change="onColorGroupQuestionTypeChange(emoji)">
@@ -689,7 +685,7 @@
                       </div>
                       
                       <template x-if="tempColorGroupConfigs[emoji].sortType === 'custom'">
-                        <div class="form-group">
+                        <div class="form-group" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
                           <div class="custom-order-header">
                             <label class="form-label" style="margin-bottom: 0;">
                               Custom Order (Desktop)
@@ -703,7 +699,7 @@
                             </div>
                           </div>
                           <p class="text-xs text-secondary mb-2">Checked values will be saved. Unchecked values will be grouped as "Other".</p>
-                          <div class="custom-order-list">
+                          <div class="custom-order-list" style="flex: 1; min-height: 150px;">
                             <template x-if="loadingLinkedPreview">
                               <div class="text-center p-4"><div class="spinner spinner-sm mx-auto"></div><p class="text-xs text-secondary mt-1">Loading answers...</p></div>
                             </template>
@@ -807,23 +803,52 @@
               <!-- Reconcile Mode: One column per question with field-level comparison -->
               <div class="config-columns-container" x-show="reconcileMode" style="gap: 8px;">
                 <template x-for="qId in currentLinkedQuestions" :key="'reconcile-col-' + qId">
-                  <div class="config-column-item" style="min-width: 220px; max-width: 280px;">
+                  <div class="config-column-item" style="min-width: 240px; max-width: 300px; display: flex; flex-direction: column;">
                     <div class="config-column-header" style="padding: 8px 12px;">
-                      <div class="text-xs font-semibold truncate" :title="qId" x-text="qId"></div>
-                      <div class="text-xs opacity-70 truncate mt-1" :title="getQuestionText(qId)" x-text="getQuestionText(qId)"></div>
+                      <div class="text-sm font-semibold truncate" :title="qId" x-text="qId"></div>
+                      <div class="text-xs opacity-70 truncate mt-1" style="font-size: 14px;" :title="getQuestionText(qId)" x-text="getQuestionText(qId)"></div>
                     </div>
                     <template x-if="reconcileConfigs && reconcileConfigs[qId]">
-                      <div class="config-column-body" style="padding: 8px;">
-                        <!-- Question Type -->
-                        <div class="form-group" style="margin-bottom: 8px;">
+                      <div class="config-column-body" style="padding: 10px; font-size: 14px; display: flex; flex-direction: column; flex: 1; overflow-y: auto;">
+                        
+                        <!-- Color Group - MOVED TO TOP with Apply button -->
+                        <div class="form-group" style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 2px solid var(--border);">
                           <div class="flex justify-between items-center mb-1">
-                            <label class="form-label text-xs" style="margin: 0;">Question Type</label>
+                            <label class="form-label" style="margin: 0; font-size: 14px; font-weight: 600;">Color Group</label>
+                          </div>
+                          <div class="flex gap-2 items-center">
+                            <select class="form-select" style="font-size: 18px; padding: 6px 10px; flex: 1;"
+                                    :class="{ 'field-differs': questionFieldDiffers(qId, 'colorGroup') }"
+                                    x-model="reconcileConfigs[qId].colorGroup">
+                              <option value="" :selected="!reconcileConfigs[qId]?.colorGroup">None</option>
+                              <template x-for="emoji in colorGroupEmojis" :key="emoji">
+                                <option :value="emoji" x-text="emoji" :selected="emoji === reconcileConfigs[qId]?.colorGroup"></option>
+                              </template>
+                            </select>
+                            <button class="btn btn-sm btn-primary" 
+                                    style="font-size: 14px; padding: 6px 12px; white-space: nowrap;"
+                                    @click="applyColorGroupToReconcileQuestion(qId, reconcileConfigs[qId].colorGroup)"
+                                    :disabled="!reconcileConfigs[qId].colorGroup"
+                                    title="Apply color group's chart config to this question">
+                              Apply
+                            </button>
+                          </div>
+                          <div x-show="reconcileConfigs[qId].colorGroup && tempColorGroupConfigs[reconcileConfigs[qId].colorGroup]?.questionType" 
+                               class="text-xs mt-1 text-success" style="font-size: 14px;">
+                            ✓ <span x-text="reconcileConfigs[qId].colorGroup"></span> has config
+                          </div>
+                        </div>
+                        
+                        <!-- Question Type -->
+                        <div class="form-group" style="margin-bottom: 10px;">
+                          <div class="flex justify-between items-center mb-1">
+                            <label class="form-label" style="margin: 0; font-size: 14px;">Question Type</label>
                             <button class="btn-merge" 
                                     x-show="fieldHasDifference('questionType')"
                                     @click="mergeFieldToAll(qId, 'questionType')"
                                     title="Apply this value to all questions">Use</button>
                           </div>
-                          <select class="form-select text-xs" 
+                          <select class="form-select" style="font-size: 14px;"
                                   :class="{ 'field-differs': questionFieldDiffers(qId, 'questionType') }"
                                   x-model="reconcileConfigs[qId].questionType" 
                                   @change="onReconcileQuestionTypeChange(qId)">
@@ -835,15 +860,15 @@
                         </div>
                         
                         <!-- Chart Type Desktop -->
-                        <div class="form-group" style="margin-bottom: 8px;">
+                        <div class="form-group" style="margin-bottom: 10px;">
                           <div class="flex justify-between items-center mb-1">
-                            <label class="form-label text-xs" style="margin: 0;">Chart (Desktop)</label>
+                            <label class="form-label" style="margin: 0; font-size: 14px;">Chart (Desktop)</label>
                             <button class="btn-merge" 
                                     x-show="fieldHasDifference('chartType')"
                                     @click="mergeFieldToAll(qId, 'chartType')"
                                     title="Apply this value to all questions">Use</button>
                           </div>
-                          <select class="form-select text-xs"
+                          <select class="form-select" style="font-size: 14px;"
                                   :class="{ 'field-differs': questionFieldDiffers(qId, 'chartType') }"
                                   x-model="reconcileConfigs[qId].chartType">
                             <option value="">Select chart...</option>
@@ -854,15 +879,15 @@
                         </div>
                         
                         <!-- Chart Type Mobile -->
-                        <div class="form-group" style="margin-bottom: 8px;">
+                        <div class="form-group" style="margin-bottom: 10px;">
                           <div class="flex justify-between items-center mb-1">
-                            <label class="form-label text-xs" style="margin: 0;">Chart (Mobile)</label>
+                            <label class="form-label" style="margin: 0; font-size: 14px;">Chart (Mobile)</label>
                             <button class="btn-merge" 
                                     x-show="fieldHasDifference('mobileChartType')"
                                     @click="mergeFieldToAll(qId, 'mobileChartType')"
                                     title="Apply this value to all questions">Use</button>
                           </div>
-                          <select class="form-select text-xs"
+                          <select class="form-select" style="font-size: 14px;"
                                   :class="{ 'field-differs': questionFieldDiffers(qId, 'mobileChartType') }"
                                   x-model="reconcileConfigs[qId].mobileChartType">
                             <option value="">Same as desktop</option>
@@ -873,9 +898,9 @@
                         </div>
                         
                         <!-- Has Other -->
-                        <div class="form-group" style="margin-bottom: 8px;">
+                        <div class="form-group" style="margin-bottom: 10px;">
                           <div class="flex justify-between items-center">
-                            <label class="checkbox-label text-xs"
+                            <label class="checkbox-label" style="font-size: 14px;"
                                    :class="{ 'field-differs': questionFieldDiffers(qId, 'hasOther') }">
                               <input type="checkbox" class="form-checkbox" x-model="reconcileConfigs[qId].hasOther">
                               <span>Has Other</span>
@@ -888,17 +913,18 @@
                         </div>
                         
                         <!-- Sort Type Desktop -->
-                        <div class="form-group" style="margin-bottom: 8px;">
+                        <div class="form-group" style="margin-bottom: 10px;">
                           <div class="flex justify-between items-center mb-1">
-                            <label class="form-label text-xs" style="margin: 0;">Sort (Desktop)</label>
+                            <label class="form-label" style="margin: 0; font-size: 14px;">Sort (Desktop)</label>
                             <button class="btn-merge" 
                                     x-show="fieldHasDifference('sortType')"
                                     @click="mergeFieldToAll(qId, 'sortType')"
                                     title="Apply this value to all questions">Use</button>
                           </div>
-                          <select class="form-select text-xs"
+                          <select class="form-select" style="font-size: 14px;"
                                   :class="{ 'field-differs': questionFieldDiffers(qId, 'sortType') }"
-                                  x-model="reconcileConfigs[qId].sortType">
+                                  x-model="reconcileConfigs[qId].sortType"
+                                  @change="onReconcileSortTypeChange(qId, 'desktop')">
                             <option value="none" :selected="reconcileConfigs[qId]?.sortType === 'none'">none</option>
                             <option value="alphabetical" :selected="reconcileConfigs[qId]?.sortType === 'alphabetical'">alphabetical</option>
                             <option value="frequency_desc" :selected="reconcileConfigs[qId]?.sortType === 'frequency_desc'">frequency_desc</option>
@@ -910,17 +936,18 @@
                         </div>
                         
                         <!-- Sort Type Mobile -->
-                        <div class="form-group" style="margin-bottom: 8px;">
+                        <div class="form-group" style="margin-bottom: 10px;">
                           <div class="flex justify-between items-center mb-1">
-                            <label class="form-label text-xs" style="margin: 0;">Sort (Mobile)</label>
+                            <label class="form-label" style="margin: 0; font-size: 14px;">Sort (Mobile)</label>
                             <button class="btn-merge" 
                                     x-show="fieldHasDifference('sortTypeMobile')"
                                     @click="mergeFieldToAll(qId, 'sortTypeMobile')"
                                     title="Apply this value to all questions">Use</button>
                           </div>
-                          <select class="form-select text-xs"
+                          <select class="form-select" style="font-size: 14px;"
                                   :class="{ 'field-differs': questionFieldDiffers(qId, 'sortTypeMobile') }"
-                                  x-model="reconcileConfigs[qId].sortTypeMobile">
+                                  x-model="reconcileConfigs[qId].sortTypeMobile"
+                                  @change="onReconcileSortTypeChange(qId, 'mobile')">
                             <option value="" :selected="!reconcileConfigs[qId]?.sortTypeMobile">Same as desktop</option>
                             <option value="none" :selected="reconcileConfigs[qId]?.sortTypeMobile === 'none'">none</option>
                             <option value="alphabetical" :selected="reconcileConfigs[qId]?.sortTypeMobile === 'alphabetical'">alphabetical</option>
@@ -931,53 +958,109 @@
                         </div>
                         
                         <!-- Custom Order Desktop -->
-                        <div class="form-group" style="margin-bottom: 8px;">
-                          <div class="flex justify-between items-center mb-1">
-                            <label class="form-label text-xs" style="margin: 0;">Custom Order</label>
-                            <button class="btn-merge" 
+                        <template x-if="reconcileConfigs[qId]?.sortType === 'custom'">
+                          <div class="form-group" style="margin-bottom: 10px; flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                            <div class="custom-order-header" style="margin-bottom: 4px;">
+                              <label class="form-label" style="margin: 0; font-size: 14px;">
+                                Custom Order
+                                <span class="text-secondary ml-1" style="font-size: 14px;" x-show="getReconcileCustomOrderItemsWithMeta(qId, 'desktop').length > 0" 
+                                      x-text="'(' + getReconcileCustomOrderItemsWithMeta(qId, 'desktop').filter(i => i.checked).length + '/' + getReconcileCustomOrderItemsWithMeta(qId, 'desktop').length + ')'"></span>
+                              </label>
+                              <button class="btn-counts" style="font-size: 14px; padding: 2px 8px;" 
+                                      @click="toggleReconcileCheckboxes(qId, 'desktop')" 
+                                      :disabled="reconcileLoadingAnswers[qId] || getReconcileCustomOrderItemsWithMeta(qId, 'desktop').length === 0"
+                                      x-text="getReconcileToggleButtonText(qId, 'desktop')"></button>
+                            </div>
+                            <div class="custom-order-list" style="flex: 1; min-height: 100px; font-size: 14px;">
+                              <template x-if="reconcileLoadingAnswers[qId]">
+                                <div class="text-center p-2"><div class="spinner spinner-sm mx-auto"></div><p class="text-secondary mt-1" style="font-size: 14px;">Loading...</p></div>
+                              </template>
+                              <template x-if="!reconcileLoadingAnswers[qId] && getReconcileCustomOrderItemsWithMeta(qId, 'desktop').length === 0">
+                                <div class="text-center p-2 text-secondary" style="font-size: 14px;">No values. Click Refresh to load.</div>
+                              </template>
+                              <template x-for="(item, index) in getReconcileCustomOrderItemsWithMeta(qId, 'desktop')" :key="item.value">
+                                <div class="custom-order-item" style="padding: 5px 8px; margin: 2px 0; font-size: 14px;"
+                                     :class="{ unchecked: !item.checked, 'is-dragging': dragState.dragging && dragState.dragIndex === index && dragState.context === 'reconcile_' + qId + '_desktop', 'drag-over': dragState.dragOverIndex === index && dragState.context === 'reconcile_' + qId + '_desktop' }"
+                                     draggable="true"
+                                     @dragstart="handleReconcileDragStart($event, index, qId, 'desktop')"
+                                     @dragend="handleDragEnd($event)"
+                                     @dragover.prevent="handleReconcileDragOver($event, index, qId, 'desktop')"
+                                     @dragleave="handleDragLeave($event)"
+                                     @drop="handleReconcileDrop($event, index, qId, 'desktop')">
+                                  <span class="drag-handle" style="font-size: 14px;" title="Drag to reorder">⋮⋮</span>
+                                  <input type="checkbox" class="item-checkbox" style="width: 16px; height: 16px;" :checked="item.checked" @change="toggleReconcileCustomOrderItem(qId, 'desktop', index)" @click.stop title="Include in saved config">
+                                  <span class="item-text" style="font-size: 14px;" :title="item.value" x-text="item.value"></span>
+                                  <span class="item-count" style="font-size: 14px; padding: 2px 6px;" x-show="item.count !== undefined" x-text="item.count"></span>
+                                  <div class="item-controls" style="gap: 2px;">
+                                    <button class="btn-move" style="font-size: 14px; padding: 2px 4px;" @click.prevent.stop="moveReconcileCustomOrderItem(qId, 'desktop', index, 'up')" :disabled="index === 0" title="Move up">↑</button>
+                                    <button class="btn-move" style="font-size: 14px; padding: 2px 4px;" @click.prevent.stop="moveReconcileCustomOrderItem(qId, 'desktop', index, 'down')" :disabled="index === getReconcileCustomOrderItemsWithMeta(qId, 'desktop').length - 1" title="Move down">↓</button>
+                                  </div>
+                                </div>
+                              </template>
+                              <button class="btn btn-secondary btn-sm w-full mt-1" style="font-size: 14px; padding: 6px;" @click="loadAnswersToReconcileCustomOrder(qId, 'desktop')" :disabled="reconcileLoadingAnswers[qId]">
+                                <span x-show="!reconcileLoadingAnswers[qId]">↻ Refresh Answers</span>
+                                <span x-show="reconcileLoadingAnswers[qId]">Loading...</span>
+                              </button>
+                            </div>
+                            <button class="btn-merge mt-2" style="width: 100%; font-size: 14px;"
                                     x-show="fieldHasDifference('customOrder')"
                                     @click="mergeFieldToAll(qId, 'customOrder')"
-                                    title="Merge all custom orders together">Merge All</button>
+                                    title="Merge all custom orders together">Merge All Custom Orders</button>
                           </div>
-                          <div class="text-xs p-2 rounded border"
-                               :class="{ 'field-differs': questionFieldDiffers(qId, 'customOrder') }"
-                               :title="reconcileConfigs[qId].customOrder || '(none)'"
-                               x-text="getReconcileFieldDisplay(qId, 'customOrder')"></div>
-                        </div>
+                        </template>
                         
                         <!-- Custom Order Mobile -->
-                        <div class="form-group" style="margin-bottom: 8px;">
-                          <div class="flex justify-between items-center mb-1">
-                            <label class="form-label text-xs" style="margin: 0;">Custom Order (Mobile)</label>
-                            <button class="btn-merge" 
+                        <template x-if="reconcileConfigs[qId]?.sortTypeMobile === 'custom'">
+                          <div class="form-group" style="margin-bottom: 10px; flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                            <div class="custom-order-header" style="margin-bottom: 4px;">
+                              <label class="form-label" style="margin: 0; font-size: 14px;">
+                                Custom Order (Mobile)
+                                <span class="text-secondary ml-1" style="font-size: 14px;" x-show="getReconcileCustomOrderItemsWithMeta(qId, 'mobile').length > 0" 
+                                      x-text="'(' + getReconcileCustomOrderItemsWithMeta(qId, 'mobile').filter(i => i.checked).length + '/' + getReconcileCustomOrderItemsWithMeta(qId, 'mobile').length + ')'"></span>
+                              </label>
+                              <button class="btn-counts" style="font-size: 14px; padding: 2px 8px;" 
+                                      @click="toggleReconcileCheckboxes(qId, 'mobile')" 
+                                      :disabled="reconcileLoadingAnswers[qId] || getReconcileCustomOrderItemsWithMeta(qId, 'mobile').length === 0"
+                                      x-text="getReconcileToggleButtonText(qId, 'mobile')"></button>
+                            </div>
+                            <div class="custom-order-list" style="flex: 1; min-height: 100px; font-size: 14px;">
+                              <template x-if="reconcileLoadingAnswers[qId]">
+                                <div class="text-center p-2"><div class="spinner spinner-sm mx-auto"></div><p class="text-secondary mt-1" style="font-size: 14px;">Loading...</p></div>
+                              </template>
+                              <template x-if="!reconcileLoadingAnswers[qId] && getReconcileCustomOrderItemsWithMeta(qId, 'mobile').length === 0">
+                                <div class="text-center p-2 text-secondary" style="font-size: 14px;">No values. Click Refresh to load.</div>
+                              </template>
+                              <template x-for="(item, index) in getReconcileCustomOrderItemsWithMeta(qId, 'mobile')" :key="item.value">
+                                <div class="custom-order-item" style="padding: 5px 8px; margin: 2px 0; font-size: 14px;"
+                                     :class="{ unchecked: !item.checked, 'is-dragging': dragState.dragging && dragState.dragIndex === index && dragState.context === 'reconcile_' + qId + '_mobile', 'drag-over': dragState.dragOverIndex === index && dragState.context === 'reconcile_' + qId + '_mobile' }"
+                                     draggable="true"
+                                     @dragstart="handleReconcileDragStart($event, index, qId, 'mobile')"
+                                     @dragend="handleDragEnd($event)"
+                                     @dragover.prevent="handleReconcileDragOver($event, index, qId, 'mobile')"
+                                     @dragleave="handleDragLeave($event)"
+                                     @drop="handleReconcileDrop($event, index, qId, 'mobile')">
+                                  <span class="drag-handle" style="font-size: 14px;" title="Drag to reorder">⋮⋮</span>
+                                  <input type="checkbox" class="item-checkbox" style="width: 16px; height: 16px;" :checked="item.checked" @change="toggleReconcileCustomOrderItem(qId, 'mobile', index)" @click.stop title="Include in saved config">
+                                  <span class="item-text" style="font-size: 14px;" :title="item.value" x-text="item.value"></span>
+                                  <span class="item-count" style="font-size: 14px; padding: 2px 6px;" x-show="item.count !== undefined" x-text="item.count"></span>
+                                  <div class="item-controls" style="gap: 2px;">
+                                    <button class="btn-move" style="font-size: 14px; padding: 2px 4px;" @click.prevent.stop="moveReconcileCustomOrderItem(qId, 'mobile', index, 'up')" :disabled="index === 0" title="Move up">↑</button>
+                                    <button class="btn-move" style="font-size: 14px; padding: 2px 4px;" @click.prevent.stop="moveReconcileCustomOrderItem(qId, 'mobile', index, 'down')" :disabled="index === getReconcileCustomOrderItemsWithMeta(qId, 'mobile').length - 1" title="Move down">↓</button>
+                                  </div>
+                                </div>
+                              </template>
+                              <button class="btn btn-secondary btn-sm w-full mt-1" style="font-size: 14px; padding: 6px;" @click="loadAnswersToReconcileCustomOrder(qId, 'mobile')" :disabled="reconcileLoadingAnswers[qId]">
+                                <span x-show="!reconcileLoadingAnswers[qId]">↻ Refresh Answers</span>
+                                <span x-show="reconcileLoadingAnswers[qId]">Loading...</span>
+                              </button>
+                            </div>
+                            <button class="btn-merge mt-2" style="width: 100%; font-size: 14px;"
                                     x-show="fieldHasDifference('customOrderMobile')"
                                     @click="mergeFieldToAll(qId, 'customOrderMobile')"
-                                    title="Merge all custom orders together">Merge All</button>
+                                    title="Merge all custom orders together">Merge All Custom Orders</button>
                           </div>
-                          <div class="text-xs p-2 rounded border"
-                               :class="{ 'field-differs': questionFieldDiffers(qId, 'customOrderMobile') }"
-                               :title="reconcileConfigs[qId].customOrderMobile || '(none)'"
-                               x-text="getReconcileFieldDisplay(qId, 'customOrderMobile')"></div>
-                        </div>
+                        </template>
                         
-                        <!-- Color Group -->
-                        <div class="form-group" style="margin-bottom: 8px;">
-                          <div class="flex justify-between items-center mb-1">
-                            <label class="form-label text-xs" style="margin: 0;">Color Group</label>
-                            <button class="btn-merge" 
-                                    x-show="fieldHasDifference('colorGroup')"
-                                    @click="mergeFieldToAll(qId, 'colorGroup')"
-                                    title="Apply this color group to all questions">Use</button>
-                          </div>
-                          <select class="form-select text-xs"
-                                  :class="{ 'field-differs': questionFieldDiffers(qId, 'colorGroup') }"
-                                  x-model="reconcileConfigs[qId].colorGroup">
-                            <option value="" :selected="!reconcileConfigs[qId]?.colorGroup">No group</option>
-                            <template x-for="emoji in colorGroupEmojis" :key="emoji">
-                              <option :value="emoji" x-text="emoji" :selected="emoji === reconcileConfigs[qId]?.colorGroup"></option>
-                            </template>
-                          </select>
-                        </div>
                       </div>
                     </template>
                   </div>

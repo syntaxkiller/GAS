@@ -55,6 +55,7 @@
       reconcileMode: false,
       reconcileConfigs: {},  // Maps questionId -> editable config for reconcile mode
       configSignatures: {},  // Maps questionId -> config signature string for comparison
+      reconcileLoadingAnswers: {},  // Maps questionId -> boolean for loading state
       
       // Temporary Color Group assignments within Linked Questions modal
       // Maps questionId -> color group emoji for batch configuration
@@ -1401,6 +1402,7 @@
         // Reset reconcile mode state
         this.reconcileMode = false;
         this.reconcileConfigs = {};
+        this.reconcileLoadingAnswers = {};
         this.configSignatures = {};
         // Reset drag state
         this.dragState = { dragging: false, dragIndex: null, dragOverIndex: null, context: null };
@@ -1428,21 +1430,41 @@
           // Entering reconcile mode - initialize configs first, then show UI
           const newConfigs = {};
           
+          // Reset loading state
+          this.reconcileLoadingAnswers = {};
+          
           this.currentLinkedQuestions.forEach(qId => {
-            const savedConfig = this.currentConfig[qId];
-            console.log(`Reconcile: Loading config for ${qId}:`, savedConfig);
+            // CHECK: Is this question currently assigned to a color group in the modal?
+            const assignedGroup = this.tempColorGroupAssignments[qId];
+            let sourceConfig = null;
             
+            // If assigned to a group and that group has a valid config, use it (preserves unsaved work)
+            if (assignedGroup && this.tempColorGroupConfigs[assignedGroup] && 
+              (this.tempColorGroupConfigs[assignedGroup].questionType || 
+              this.tempColorGroupConfigs[assignedGroup].customOrder || 
+              this.tempColorGroupConfigs[assignedGroup].customOrderMobile)) {
+              sourceConfig = this.tempColorGroupConfigs[assignedGroup];
+              console.log(`Reconcile: Using temp config from group ${assignedGroup} for ${qId}:`, sourceConfig);
+            } else {
+              // Otherwise fallback to the saved config from database
+              sourceConfig = this.currentConfig[qId];
+              console.log(`Reconcile: Using saved config for ${qId}:`, sourceConfig);
+            }
+
             newConfigs[qId] = {
-              questionType: savedConfig?.questionType || '',
-              chartType: savedConfig?.chartType || '',
-              mobileChartType: savedConfig?.mobileChartType || '',
-              hasOther: savedConfig?.hasOther === true,
-              sortType: savedConfig?.sortType || 'none',
-              sortTypeMobile: savedConfig?.sortTypeMobile || '',
-              customOrder: savedConfig?.customOrder || '',
-              customOrderMobile: savedConfig?.customOrderMobile || '',
-              colorGroup: savedConfig?.colorGroup || ''
+              questionType: sourceConfig?.questionType || '',
+              chartType: sourceConfig?.chartType || '',
+              mobileChartType: sourceConfig?.mobileChartType || '',
+              hasOther: sourceConfig?.hasOther === true,
+              sortType: sourceConfig?.sortType || 'none',
+              sortTypeMobile: sourceConfig?.sortTypeMobile || '',
+              customOrder: sourceConfig?.customOrder || '',
+              customOrderMobile: sourceConfig?.customOrderMobile || '',
+              colorGroup: sourceConfig?.colorGroup || ''
             };
+            
+            // Initialize loading state for each question
+            this.reconcileLoadingAnswers[qId] = false;
           });
           
           // Set data first, then toggle mode in nextTick to ensure reactivity
@@ -1454,8 +1476,16 @@
             this.reconcileMode = true;
           });
         } else {
-          // Exiting reconcile mode
+          // Exiting reconcile mode - clean up reconcile-specific state
           this.reconcileMode = false;
+          this.reconcileLoadingAnswers = {};
+          
+          // Clean up reconcile-specific custom order checked/toggle states
+          const keysToDelete = Object.keys(this.customOrderChecked).filter(k => k.startsWith('reconcile_'));
+          keysToDelete.forEach(k => {
+            delete this.customOrderChecked[k];
+            delete this.customOrderToggleState[k];
+          });
         }
       },
       
@@ -1550,6 +1580,252 @@
         return val || '(none)';
       },
       
+      // === RECONCILE MODE CUSTOM ORDER HELPERS ===
+      
+      /**
+       * Get custom order items with metadata for reconcile mode
+       */
+      getReconcileCustomOrderItemsWithMeta(qId, platform) {
+        if (!this.reconcileConfigs || !this.reconcileConfigs[qId]) return [];
+        
+        const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
+        const orderString = this.reconcileConfigs[qId][field];
+        if (!orderString) return [];
+        
+        const items = orderString.split(',').map(s => s.trim()).filter(Boolean);
+        const key = `reconcile_${qId}_${platform}`;
+        
+        // Initialize checked states if not exists
+        if (!this.customOrderChecked[key]) {
+          this.customOrderChecked[key] = {};
+          items.forEach(item => {
+            this.customOrderChecked[key][item] = true; // Default to checked
+          });
+        }
+        
+        return items.map(value => ({
+          value: value,
+          checked: this.customOrderChecked[key][value] !== false,
+          count: this.customOrderCounts[value]
+        }));
+      },
+      
+      /**
+       * Toggle a single custom order item in reconcile mode
+       */
+      toggleReconcileCustomOrderItem(qId, platform, index) {
+        if (!this.reconcileConfigs || !this.reconcileConfigs[qId]) return;
+        
+        const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
+        const items = (this.reconcileConfigs[qId][field] || '').split(',').map(s => s.trim()).filter(Boolean);
+        const key = `reconcile_${qId}_${platform}`;
+        
+        if (index >= 0 && index < items.length) {
+          const item = items[index];
+          if (!this.customOrderChecked[key]) {
+            this.customOrderChecked[key] = {};
+          }
+          this.customOrderChecked[key][item] = !this.customOrderChecked[key][item];
+        }
+      },
+      
+      /**
+       * Toggle all checkboxes in reconcile mode custom order (cycle: uncheck → check all → check 5+)
+       */
+      toggleReconcileCheckboxes(qId, platform) {
+        if (!this.reconcileConfigs || !this.reconcileConfigs[qId]) return;
+        
+        const key = `reconcile_${qId}_${platform}`;
+        const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
+        const items = (this.reconcileConfigs[qId][field] || '').split(',').map(s => s.trim()).filter(Boolean);
+        
+        if (items.length === 0) return;
+        
+        // Initialize state if needed
+        if (this.customOrderToggleState[key] === undefined) {
+          this.customOrderToggleState[key] = 0;
+        }
+        
+        // Cycle through states: 0 (uncheck) → 1 (check all) → 2 (check 5+) → 0...
+        this.customOrderToggleState[key] = (this.customOrderToggleState[key] + 1) % 3;
+        const state = this.customOrderToggleState[key];
+        
+        if (!this.customOrderChecked[key]) {
+          this.customOrderChecked[key] = {};
+        }
+        
+        items.forEach(item => {
+          if (state === 0) {
+            this.customOrderChecked[key][item] = false;
+          } else if (state === 1) {
+            this.customOrderChecked[key][item] = true;
+          } else if (state === 2) {
+            const count = this.customOrderCounts[item] || 0;
+            this.customOrderChecked[key][item] = count >= 5;
+          }
+        });
+      },
+      
+      /**
+       * Get toggle button text for reconcile mode
+       */
+      getReconcileToggleButtonText(qId, platform) {
+        const key = `reconcile_${qId}_${platform}`;
+        const state = this.customOrderToggleState[key] || 0;
+        if (state === 0) return '☐ Uncheck';
+        if (state === 1) return '☑ Check All';
+        return '☑ 5+';
+      },
+      
+      /**
+       * Move a custom order item in reconcile mode
+       */
+      moveReconcileCustomOrderItem(qId, platform, index, direction) {
+        if (!this.reconcileConfigs || !this.reconcileConfigs[qId]) return;
+        
+        const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
+        const items = (this.reconcileConfigs[qId][field] || '').split(',').map(s => s.trim()).filter(Boolean);
+        
+        if (items.length === 0) return;
+        
+        let newIndex = index;
+        if (direction === 'up') newIndex = Math.max(0, index - 1);
+        else if (direction === 'down') newIndex = Math.min(items.length - 1, index + 1);
+        else if (direction === 'top') newIndex = 0;
+        else if (direction === 'bottom') newIndex = items.length - 1;
+        
+        if (newIndex !== index) {
+          const [item] = items.splice(index, 1);
+          items.splice(newIndex, 0, item);
+          this.reconcileConfigs[qId][field] = items.join(', ');
+        }
+      },
+      
+      /**
+       * Handle drag start for reconcile mode custom order
+       */
+      handleReconcileDragStart(event, index, qId, platform) {
+        const context = `reconcile_${qId}_${platform}`;
+        this.dragState.dragging = true;
+        this.dragState.dragIndex = index;
+        this.dragState.context = context;
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', index.toString());
+      },
+      
+      /**
+       * Handle drag over for reconcile mode
+       */
+      handleReconcileDragOver(event, index, qId, platform) {
+        const context = `reconcile_${qId}_${platform}`;
+        if (this.dragState.context === context) {
+          this.dragState.dragOverIndex = index;
+        }
+      },
+      
+      /**
+       * Handle drop for reconcile mode custom order
+       */
+      handleReconcileDrop(event, targetIndex, qId, platform) {
+        const context = `reconcile_${qId}_${platform}`;
+        if (this.dragState.context !== context) return;
+        
+        const sourceIndex = this.dragState.dragIndex;
+        if (sourceIndex === null || sourceIndex === targetIndex) {
+          this.dragState = { dragging: false, dragIndex: null, dragOverIndex: null, context: null };
+          return;
+        }
+        
+        const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
+        const items = (this.reconcileConfigs[qId][field] || '').split(',').map(s => s.trim()).filter(Boolean);
+        
+        const [item] = items.splice(sourceIndex, 1);
+        items.splice(targetIndex, 0, item);
+        this.reconcileConfigs[qId][field] = items.join(', ');
+        
+        this.dragState = { dragging: false, dragIndex: null, dragOverIndex: null, context: null };
+      },
+      
+      /**
+       * Load answers for a single question in reconcile mode
+       */
+      async loadAnswersToReconcileCustomOrder(qId, platform) {
+        if (!this.reconcileConfigs || !this.reconcileConfigs[qId]) {
+          this.showMessage('error', 'No question config found');
+          return;
+        }
+        
+        // Set loading state for this specific question
+        this.reconcileLoadingAnswers[qId] = true;
+        
+        try {
+          let options;
+          if (this.answerOptionsCache[qId]) {
+            options = this.answerOptionsCache[qId];
+          } else {
+            options = await server.getAnswerOptions(qId);
+            this.answerOptionsCache[qId] = options;
+          }
+          
+          const answerCounts = {};
+          options.forEach(opt => {
+            answerCounts[opt.value] = opt.count;
+          });
+          
+          // Store counts
+          this.customOrderCounts = { ...this.customOrderCounts, ...answerCounts };
+          
+          // Sort by frequency (descending)
+          const sortedAnswers = options
+            .sort((a, b) => b.count - a.count)
+            .map(opt => opt.value);
+          
+          // Update the custom order field
+          const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
+          this.reconcileConfigs[qId][field] = sortedAnswers.join(', ');
+          
+          // Initialize checkboxes: check only items with 5+ replies
+          const key = `reconcile_${qId}_${platform}`;
+          this.customOrderChecked[key] = {};
+          this.customOrderToggleState[key] = 2; // Set to "Check 5+" state
+          
+          sortedAnswers.forEach(answer => {
+            const count = answerCounts[answer] || 0;
+            this.customOrderChecked[key][answer] = count >= 5;
+          });
+          
+          const checkedCount = sortedAnswers.filter(a => answerCounts[a] >= 5).length;
+          this.showMessage('success', `Loaded ${sortedAnswers.length} answers (${checkedCount} with 5+ replies checked)`);
+        } catch (err) {
+          this.showMessage('error', 'Failed to load answers: ' + err.message);
+        } finally {
+          this.reconcileLoadingAnswers[qId] = false;
+        }
+      },
+      
+      /**
+       * Handle sort type change in reconcile mode - auto-load answers when custom is selected
+       */
+      async onReconcileSortTypeChange(qId, platform) {
+        if (!this.reconcileConfigs || !this.reconcileConfigs[qId]) return;
+        
+        const cfg = this.reconcileConfigs[qId];
+        const field = platform === 'desktop' ? 'sortType' : 'sortTypeMobile';
+        const orderField = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
+        
+        if (cfg[field] === 'custom') {
+          // Auto-load answers when custom is selected
+          await this.loadAnswersToReconcileCustomOrder(qId, platform);
+        } else {
+          // Clear custom order when switching away from custom
+          cfg[orderField] = '';
+          // Clear checked states for this context
+          const key = `reconcile_${qId}_${platform}`;
+          delete this.customOrderChecked[key];
+          delete this.customOrderToggleState[key];
+        }
+      },
+      
       /**
        * Merge a field value from source question to all other questions
        * For custom order fields, combines values from all questions
@@ -1575,47 +1851,102 @@
       },
       
       /**
-       * Sync all questions to the most common (consensus) value for a field
+       * Apply color group configuration to a question in reconcile mode
+       * Copies chart config from the color group and handles custom order merging
        */
-      syncFieldToConsensus(fieldKey) {
-        if (!this.reconcileConfigs) return;
+      async applyColorGroupToReconcileQuestion(qId, emoji) {
+        if (!this.reconcileConfigs || !this.reconcileConfigs[qId]) return;
+        if (!emoji) return;
         
-        // Count values
-        const valueCounts = {};
-        this.currentLinkedQuestions.forEach(qId => {
-          const cfg = this.reconcileConfigs[qId];
-          if (cfg) {
-            let val = cfg[fieldKey];
-            if (typeof val === 'boolean') val = val.toString();
-            if (val === null || val === undefined) val = '';
-            valueCounts[val] = (valueCounts[val] || 0) + 1;
+        const cfg = this.reconcileConfigs[qId];
+        
+        // Get the color group config from tempColorGroupConfigs if it exists
+        const groupConfig = this.tempColorGroupConfigs[emoji];
+        
+        if (groupConfig && groupConfig.questionType) {
+          // Copy chart configuration from color group
+          cfg.questionType = groupConfig.questionType || cfg.questionType;
+          cfg.chartType = groupConfig.chartType || cfg.chartType;
+          cfg.mobileChartType = groupConfig.mobileChartType || cfg.mobileChartType;
+          cfg.hasOther = groupConfig.hasOther === true;
+          cfg.sortType = groupConfig.sortType || cfg.sortType;
+          cfg.sortTypeMobile = groupConfig.sortTypeMobile || cfg.sortTypeMobile;
+          
+          // Handle custom order - if group has custom order, merge with question's answers
+          if (groupConfig.sortType === 'custom' && groupConfig.customOrder) {
+            await this.mergeColorGroupCustomOrderToQuestion(qId, emoji, 'desktop');
           }
-        });
-        
-        // Find most common
-        let mostCommonValue = '';
-        let maxCount = 0;
-        Object.entries(valueCounts).forEach(([val, count]) => {
-          if (count > maxCount) {
-            maxCount = count;
-            mostCommonValue = val;
+          if (groupConfig.sortTypeMobile === 'custom' && groupConfig.customOrderMobile) {
+            await this.mergeColorGroupCustomOrderToQuestion(qId, emoji, 'mobile');
           }
-        });
-        
-        // Convert back to correct type for boolean fields
-        let valueToApply = mostCommonValue;
-        if (fieldKey === 'hasOther') {
-          valueToApply = mostCommonValue === 'true';
+          
+          this.showMessage('success', `Applied ${emoji} config to ${qId}`);
+        } else {
+          // No group config exists yet, just set the color group
+          this.showMessage('info', `Assigned ${qId} to ${emoji} (no config to apply yet)`);
         }
         
-        // Apply to all
-        this.currentLinkedQuestions.forEach(qId => {
-          if (this.reconcileConfigs[qId]) {
-            this.reconcileConfigs[qId][fieldKey] = valueToApply;
+        // Set the color group
+        cfg.colorGroup = emoji;
+      },
+      
+      /**
+       * Merge color group custom order with question's answers
+       * Group's custom order values will be checked, question's other answers will be unchecked
+       */
+      async mergeColorGroupCustomOrderToQuestion(qId, emoji, platform) {
+        const field = platform === 'desktop' ? 'customOrder' : 'customOrderMobile';
+        const groupConfig = this.tempColorGroupConfigs[emoji];
+        
+        if (!groupConfig || !groupConfig[field]) return;
+        
+        // Get the color group's custom order items (these will be "checked")
+        const groupOrderItems = groupConfig[field].split(',').map(s => s.trim()).filter(Boolean);
+        const groupOrderSet = new Set(groupOrderItems);
+        
+        // Get all answers for this question
+        let allAnswers = [];
+        if (this.answerOptionsCache[qId]) {
+          allAnswers = this.answerOptionsCache[qId].map(opt => opt.value);
+        } else {
+          // Load answers if not cached
+          try {
+            this.reconcileLoadingAnswers[qId] = true;
+            const options = await server.getAnswerOptions(qId);
+            this.answerOptionsCache[qId] = options;
+            
+            // Update counts
+            const answerCounts = {};
+            options.forEach(opt => {
+              answerCounts[opt.value] = opt.count;
+            });
+            this.customOrderCounts = { ...this.customOrderCounts, ...answerCounts };
+            
+            allAnswers = options.map(opt => opt.value);
+          } catch (err) {
+            console.error('Failed to load answers:', err);
+            return;
+          } finally {
+            this.reconcileLoadingAnswers[qId] = false;
           }
+        }
+        
+        // Build combined list: group order items first (checked), then remaining answers (unchecked)
+        const remainingAnswers = allAnswers.filter(a => !groupOrderSet.has(a));
+        const combinedOrder = [...groupOrderItems, ...remainingAnswers];
+        
+        // Update the reconcile config
+        this.reconcileConfigs[qId][field] = combinedOrder.join(', ');
+        
+        // Set up checked states: group items checked, others unchecked
+        const key = `reconcile_${qId}_${platform}`;
+        this.customOrderChecked[key] = {};
+        
+        combinedOrder.forEach(item => {
+          this.customOrderChecked[key][item] = groupOrderSet.has(item);
         });
         
-        this.showMessage('success', `Synced all questions to consensus value for "${fieldKey}"`);
+        this.customOrderToggleState[key] = 0; // Reset toggle state
       },
       
       /**
@@ -1680,13 +2011,37 @@
         this.currentLinkedQuestions.forEach(qId => {
           const cfg = this.reconcileConfigs[qId];
           if (cfg) {
+            // Create a copy to modify
+            const configToSave = { ...cfg };
+            
             // Preserve individual colorGroup - if empty, assign default
-            if (!cfg.colorGroup) {
-              cfg.colorGroup = this.colorGroupEmojis[0]; // Default to first emoji
+            if (!configToSave.colorGroup) {
+              configToSave.colorGroup = this.colorGroupEmojis[0]; // Default to first emoji
             }
+            
+            // Filter custom order to only include checked items (desktop)
+            if (configToSave.sortType === 'custom' && configToSave.customOrder) {
+              const desktopKey = `reconcile_${qId}_desktop`;
+              if (this.customOrderChecked[desktopKey]) {
+                const items = configToSave.customOrder.split(',').map(s => s.trim()).filter(Boolean);
+                const checkedItems = items.filter(item => this.customOrderChecked[desktopKey][item] !== false);
+                configToSave.customOrder = checkedItems.join(', ');
+              }
+            }
+            
+            // Filter custom order to only include checked items (mobile)
+            if (configToSave.sortTypeMobile === 'custom' && configToSave.customOrderMobile) {
+              const mobileKey = `reconcile_${qId}_mobile`;
+              if (this.customOrderChecked[mobileKey]) {
+                const items = configToSave.customOrderMobile.split(',').map(s => s.trim()).filter(Boolean);
+                const checkedItems = items.filter(item => this.customOrderChecked[mobileKey][item] !== false);
+                configToSave.customOrderMobile = checkedItems.join(', ');
+              }
+            }
+            
             configsToSave.push({
               questionId: qId,
-              config: { ...cfg }
+              config: configToSave
             });
           }
         });
